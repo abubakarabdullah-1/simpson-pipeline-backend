@@ -1,4 +1,4 @@
-import gradio as gr
+#import gradio as gr
 import pandas as pd
 import time
 import traceback
@@ -242,3 +242,52 @@ with gr.Blocks(title="AI EIFS Estimator V4 - Transparent") as demo:
 
 if __name__ == "__main__":
     demo.queue().launch(share=False, server_name="0.0.0.0")
+from pipeline import phase1, phase2, phase3, phase4, phase5
+
+def run_pipeline(pdf_path: str):
+    logs = []
+
+    def log(msg):
+        print(msg)
+        logs.append(msg)
+
+    log("Starting pipeline")
+
+    actionable_pages = phase1.execute(pdf_path)
+
+    elevation_pages = [
+        p["page"]
+        for p in actionable_pages
+        if p["type"] == "Exterior_Elevation"
+    ]
+
+    project_specs, _ = phase2.execute(pdf_path, actionable_pages)
+
+    survey_data, _ = phase3.execute(
+        pdf_path,
+        elevation_pages,
+        project_specs,
+    )
+
+    scale_data, _ = phase4.execute(
+        pdf_path,
+        elevation_pages,
+    )
+
+    line_items, grand_total, _ = phase5.execute(
+        pdf_path,
+        survey_data,
+        scale_data,
+        project_specs,
+    )
+
+    log("Pipeline finished")
+
+    return {
+        "project_specs": project_specs,
+        "survey_data": survey_data,
+        "scale_data": scale_data,
+        "line_items": line_items,
+        "grand_total": grand_total,
+        "logs": logs,
+    }
