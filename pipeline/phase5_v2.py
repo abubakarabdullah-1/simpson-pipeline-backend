@@ -9,7 +9,7 @@ from PIL import Image
 # (Ideally, we would pass the view boxes from Phase 3/4 to Phase 5 to avoid re-detection drift)
 # For robustness, let's reuse the detector logic here or import it.
 try:
-    from phase3 import detect_drawing_views
+    from pipeline.phase3_v4 import detect_drawing_views
 except:
     def detect_drawing_views(img): return [{"label": "Full Page", "box_1000": [0,0,1000,1000]}]
 
