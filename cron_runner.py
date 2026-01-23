@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from pymongo import MongoClient
 
 from pipeline.runner import run_pipeline
+from pipeline.excel_exporter import create_excel_from_result
 
 
 # -----------------------------
@@ -85,7 +86,15 @@ def run_batch():
             result = run_pipeline(pdf_path)
 
             # ------------------
-            # Save JSON result locally (raw)
+            # Create Excel FIRST
+            # ------------------
+            excel_path = os.path.join(OUTPUT_DIR, f"{run_id}.xlsx")
+            create_excel_from_result(result, excel_path)
+
+            result["excel_file"] = excel_path
+
+            # ------------------
+            # Save JSON locally
             # ------------------
             json_path = os.path.join(OUTPUT_DIR, f"{run_id}.json")
 
@@ -99,6 +108,7 @@ def run_batch():
                 "status": "COMPLETED",
                 "result": result,
                 "result_file": json_path,
+                "excel_file": excel_path,
                 "ended_at": datetime.utcnow(),
                 "confidence": result.get("confidence"),
             }
