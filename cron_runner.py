@@ -2,6 +2,7 @@ import os
 import glob
 from datetime import datetime
 import json
+import traceback
 
 from dotenv import load_dotenv
 from pymongo import MongoClient
@@ -105,16 +106,23 @@ def run_batch():
 
         except Exception as exc:
 
+            tb = traceback.format_exc()
+
             runs_collection.update_one(
                 {"run_id": run_id},
                 {
                     "$set": {
                         "status": "FAILED",
                         "error": str(exc),
+                        "traceback": tb,
                         "ended_at": datetime.utcnow(),
                     }
                 },
             )
+
+            print(f"[CRON] FAILED {filename}")
+            print(tb)
+
 
             print(f"[CRON] FAILED {filename}", exc)
 

@@ -5,6 +5,7 @@ import os
 import shutil
 import json
 from dotenv import load_dotenv
+import traceback
 
 from pymongo import MongoClient
 
@@ -26,6 +27,13 @@ client = MongoClient(MONGO_URL)
 db = client["simpson_pipeline"]
 runs_collection = db["runs"]
 
+def stringify_keys(obj):
+    if isinstance(obj, dict):
+        return {str(k): stringify_keys(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [stringify_keys(v) for v in obj]
+    else:
+        return obj
 
 
 # -----------------------------
@@ -87,6 +95,8 @@ async def trigger_pipeline(
         "status": "started",
     }
 
+ERROR_DIR = "error_logs"
+os.makedirs(ERROR_DIR, exist_ok=True)
 
 # -----------------------------
 # Worker
@@ -119,16 +129,44 @@ def run_and_store(run_id: str, pdf_path: str):
 
     except Exception as exc:
 
-        runs_collection.update_one(
-            {"run_id": run_id},
-            {
-                "$set": {
-                    "status": "FAILED",
-                    "error": str(exc),
-                    "ended_at": datetime.utcnow(),
-                }
-            },
-        )
+        import traceback
+
+        tb = traceback.format_exc()
+
+        # ------------------
+        # Write local error log
+        # ------------------
+        error_path = os.path.join(ERROR_DIR, f"{run_id}.txt")
+
+        with open(error_path, "w") as f:
+            f.write(f"RUN ID: {run_id}\n")
+            f.write(f"PDF: {pdf_path}\n")
+            f.write(f"TIME: {datetime.utcnow()}\n\n")
+            f.write(str(exc))
+            f.write("\n\nTRACEBACK:\n")
+            f.write(tb)
+
+        # ------------------
+        # Save to Mongo
+        # ------------------
+        try:
+            runs_collection.update_one(
+                {"run_id": run_id},
+                {
+                    "$set": {
+                        "status": "FAILED",
+                        "error": str(exc),
+                        "traceback": tb,
+                        "error_file": error_path,
+                        "ended_at": datetime.utcnow(),
+                    }
+                },
+            )
+        except Exception as mongo_exc:
+            print("!!! FAILED TO WRITE ERROR TO MONGO !!!")
+            print(mongo_exc)
+
+
 
 
 # -----------------------------
