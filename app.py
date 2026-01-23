@@ -3,16 +3,35 @@ from datetime import datetime
 import uuid
 import os
 import shutil
+import json
 
 from pymongo import MongoClient
 
 from pipeline.runner import run_pipeline
 
 
+
 # -----------------------------
-# Mongo Setup
+# Mongo Setup (MongoDB Atlas)
 # -----------------------------
-MONGO_URL = "mongodb://localhost:27017"
+MONGO_URL = (
+   "mongodb+srv://abubakarabdullah:DtZ1DAu5IMp83rVI@cluster0.clmrsac.mongodb.net/?appName=Cluster0"
+)
+
+client = MongoClient(MONGO_URL)
+
+db = client["simpson_pipeline"]
+runs_collection = db["runs"]
+
+
+# -----------------------------
+# Mongo Setup (Atlas via ENV)
+# -----------------------------
+MONGO_URL = os.getenv("MONGO_URL")
+
+if not MONGO_URL:
+    raise RuntimeError("MONGO_URL environment variable is not set")
+
 client = MongoClient(MONGO_URL)
 
 db = client["simpson_pipeline"]
@@ -59,7 +78,10 @@ async def trigger_pipeline(
 
     background.add_task(run_and_store, run_id, file_path)
 
-    return {"run_id": run_id, "status": "started"}
+    return {
+        "run_id": run_id,
+        "status": "started",
+    }
 
 
 # -----------------------------
@@ -70,10 +92,12 @@ def run_and_store(run_id: str, pdf_path: str):
     try:
         result = run_pipeline(pdf_path)
 
+        # ------------------
         # Save JSON result
+        # ------------------
         json_path = os.path.join(OUTPUT_DIR, f"{run_id}.json")
+
         with open(json_path, "w") as f:
-            import json
             json.dump(result, f, indent=2)
 
         runs_collection.update_one(
@@ -84,6 +108,7 @@ def run_and_store(run_id: str, pdf_path: str):
                     "result": result,
                     "result_file": json_path,
                     "ended_at": datetime.utcnow(),
+                    "confidence": result.get("confidence"),
                 }
             },
         )
