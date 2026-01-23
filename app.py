@@ -52,7 +52,7 @@ os.makedirs(ERROR_DIR, exist_ok=True)
 app = FastAPI(title="Simpson Pipeline Backend")
 
 # -----------------------------
-# CORS
+# CORS......
 # -----------------------------
 app.add_middleware(
     CORSMiddleware,
