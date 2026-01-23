@@ -11,6 +11,18 @@ from pipeline.runner import run_pipeline
 
 
 # -----------------------------
+# Helpers
+# -----------------------------
+def stringify_keys(obj):
+    if isinstance(obj, dict):
+        return {str(k): stringify_keys(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [stringify_keys(v) for v in obj]
+    else:
+        return obj
+
+
+# -----------------------------
 # Load ENV
 # -----------------------------
 load_dotenv()
@@ -36,10 +48,12 @@ runs_collection = db["runs"]
 INPUT_DIR = "cron_inputs"
 ARCHIVE_DIR = "cron_archive"
 OUTPUT_DIR = "outputs"
+ERROR_DIR = "error_logs"
 
 os.makedirs(INPUT_DIR, exist_ok=True)
 os.makedirs(ARCHIVE_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(ERROR_DIR, exist_ok=True)
 
 
 # -----------------------------
@@ -71,7 +85,7 @@ def run_batch():
             result = run_pipeline(pdf_path)
 
             # ------------------
-            # Save JSON result
+            # Save JSON result locally (raw)
             # ------------------
             json_path = os.path.join(OUTPUT_DIR, f"{run_id}.json")
 
@@ -79,19 +93,21 @@ def run_batch():
                 json.dump(result, f, indent=2)
 
             # ------------------
-            # Update Mongo
+            # Mongo-safe payload
             # ------------------
+            mongo_payload = {
+                "status": "COMPLETED",
+                "result": result,
+                "result_file": json_path,
+                "ended_at": datetime.utcnow(),
+                "confidence": result.get("confidence"),
+            }
+
+            safe_payload = stringify_keys(mongo_payload)
+
             runs_collection.update_one(
                 {"run_id": run_id},
-                {
-                    "$set": {
-                        "status": "COMPLETED",
-                        "result": result,
-                        "result_file": json_path,
-                        "ended_at": datetime.utcnow(),
-                        "confidence": result.get("confidence"),
-                    }
-                },
+                {"$set": safe_payload},
             )
 
             # ------------------
@@ -108,23 +124,43 @@ def run_batch():
 
             tb = traceback.format_exc()
 
-            runs_collection.update_one(
-                {"run_id": run_id},
-                {
-                    "$set": {
-                        "status": "FAILED",
-                        "error": str(exc),
-                        "traceback": tb,
-                        "ended_at": datetime.utcnow(),
-                    }
-                },
-            )
+            # ------------------
+            # Write local error log
+            # ------------------
+            error_path = os.path.join(ERROR_DIR, f"{run_id}.txt")
+
+            with open(error_path, "w") as f:
+                f.write(f"RUN ID: {run_id}\n")
+                f.write(f"PDF: {pdf_path}\n")
+                f.write(f"TIME: {datetime.utcnow()}\n\n")
+                f.write(str(exc))
+                f.write("\n\nTRACEBACK:\n")
+                f.write(tb)
+
+            # ------------------
+            # Mongo-safe FAILED payload
+            # ------------------
+            mongo_payload = {
+                "status": "FAILED",
+                "error": str(exc),
+                "traceback": tb,
+                "error_file": error_path,
+                "ended_at": datetime.utcnow(),
+            }
+
+            safe_payload = stringify_keys(mongo_payload)
+
+            try:
+                runs_collection.update_one(
+                    {"run_id": run_id},
+                    {"$set": safe_payload},
+                )
+            except Exception as mongo_exc:
+                print("!!! FAILED TO WRITE ERROR TO MONGO !!!")
+                print(mongo_exc)
 
             print(f"[CRON] FAILED {filename}")
             print(tb)
-
-
-            print(f"[CRON] FAILED {filename}", exc)
 
 
 if __name__ == "__main__":

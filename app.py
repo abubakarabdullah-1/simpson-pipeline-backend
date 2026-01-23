@@ -4,18 +4,22 @@ import uuid
 import os
 import shutil
 import json
-from dotenv import load_dotenv
 import traceback
 
+from dotenv import load_dotenv
 from pymongo import MongoClient
 
 from pipeline.runner import run_pipeline
 
 
+# -----------------------------
+# Load ENV
+# -----------------------------
 load_dotenv()
 
+
 # -----------------------------
-# Mongo Setup (MongoDB Atlas via .env)
+# Mongo Setup (Atlas via .env)
 # -----------------------------
 MONGO_URL = os.getenv("MONGO_URL")
 
@@ -23,31 +27,20 @@ if not MONGO_URL:
     raise RuntimeError("MONGO_URL not set in .env file")
 
 client = MongoClient(MONGO_URL)
-
 db = client["simpson_pipeline"]
 runs_collection = db["runs"]
 
-def stringify_keys(obj):
-    if isinstance(obj, dict):
-        return {str(k): stringify_keys(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [stringify_keys(v) for v in obj]
-    else:
-        return obj
-
 
 # -----------------------------
-# Mongo Setup (Atlas via ENV)
+# Directories
 # -----------------------------
-MONGO_URL = os.getenv("MONGO_URL")
+UPLOAD_DIR = "uploads"
+OUTPUT_DIR = "outputs"
+ERROR_DIR = "error_logs"
 
-if not MONGO_URL:
-    raise RuntimeError("MONGO_URL environment variable is not set")
-
-client = MongoClient(MONGO_URL)
-
-db = client["simpson_pipeline"]
-runs_collection = db["runs"]
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(ERROR_DIR, exist_ok=True)
 
 
 # -----------------------------
@@ -56,11 +49,16 @@ runs_collection = db["runs"]
 app = FastAPI(title="Simpson Pipeline Backend")
 
 
-UPLOAD_DIR = "uploads"
-OUTPUT_DIR = "outputs"
-
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+# -----------------------------
+# Helpers
+# -----------------------------
+def stringify_keys(obj):
+    if isinstance(obj, dict):
+        return {str(k): stringify_keys(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [stringify_keys(v) for v in obj]
+    else:
+        return obj
 
 
 # -----------------------------
@@ -95,8 +93,6 @@ async def trigger_pipeline(
         "status": "started",
     }
 
-ERROR_DIR = "error_logs"
-os.makedirs(ERROR_DIR, exist_ok=True)
 
 # -----------------------------
 # Worker
@@ -107,29 +103,32 @@ def run_and_store(run_id: str, pdf_path: str):
         result = run_pipeline(pdf_path)
 
         # ------------------
-        # Save JSON result
+        # Save JSON locally (raw)
         # ------------------
         json_path = os.path.join(OUTPUT_DIR, f"{run_id}.json")
 
         with open(json_path, "w") as f:
             json.dump(result, f, indent=2)
 
+        # ------------------
+        # Mongo-safe payload
+        # ------------------
+        mongo_payload = {
+            "status": "COMPLETED",
+            "result": result,
+            "result_file": json_path,
+            "ended_at": datetime.utcnow(),
+            "confidence": result.get("confidence"),
+        }
+
+        safe_payload = stringify_keys(mongo_payload)
+
         runs_collection.update_one(
             {"run_id": run_id},
-            {
-                "$set": {
-                    "status": "COMPLETED",
-                    "result": result,
-                    "result_file": json_path,
-                    "ended_at": datetime.utcnow(),
-                    "confidence": result.get("confidence"),
-                }
-            },
+            {"$set": safe_payload},
         )
 
     except Exception as exc:
-
-        import traceback
 
         tb = traceback.format_exc()
 
@@ -147,26 +146,26 @@ def run_and_store(run_id: str, pdf_path: str):
             f.write(tb)
 
         # ------------------
-        # Save to Mongo
+        # Mongo-safe FAILED payload
         # ------------------
+        mongo_payload = {
+            "status": "FAILED",
+            "error": str(exc),
+            "traceback": tb,
+            "error_file": error_path,
+            "ended_at": datetime.utcnow(),
+        }
+
+        safe_payload = stringify_keys(mongo_payload)
+
         try:
             runs_collection.update_one(
                 {"run_id": run_id},
-                {
-                    "$set": {
-                        "status": "FAILED",
-                        "error": str(exc),
-                        "traceback": tb,
-                        "error_file": error_path,
-                        "ended_at": datetime.utcnow(),
-                    }
-                },
+                {"$set": safe_payload},
             )
         except Exception as mongo_exc:
             print("!!! FAILED TO WRITE ERROR TO MONGO !!!")
             print(mongo_exc)
-
-
 
 
 # -----------------------------
