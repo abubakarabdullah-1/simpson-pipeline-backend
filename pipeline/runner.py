@@ -7,6 +7,52 @@ from pipeline import (
 )
 
 
+# ==========================================
+# CONFIDENCE CALCULATOR
+# ==========================================
+def compute_confidence(
+    elevation_pages,
+    project_specs,
+    survey_data,
+    scale_data,
+    line_items,
+    grand_total,
+):
+    score = 0
+    max_score = 100
+
+    # --- Phase 1: Found elevations (20)
+    if elevation_pages:
+        score += 20
+
+    # --- Phase 2: Specs extracted (20)
+    spec_count = (
+        len(project_specs.get("windows", {}))
+        + len(project_specs.get("doors", {}))
+    )
+    if spec_count > 0:
+        score += 20
+
+    # --- Phase 3: Survey success (20)
+    survey_hits = sum(len(v) for v in survey_data.values())
+    if survey_hits > 0:
+        score += 20
+
+    # --- Phase 4: Scale calibrated (20)
+    scale_hits = sum(len(v) for v in scale_data.values())
+    if scale_hits > 0:
+        score += 20
+
+    # --- Phase 5: Final quantities produced (20)
+    if grand_total and grand_total > 0:
+        score += 20
+
+    return round(min(score, max_score), 2)
+
+
+# ==========================================
+# PIPELINE RUNNER
+# ==========================================
 def run_pipeline(pdf_path: str):
 
     logs = []
@@ -65,6 +111,18 @@ def run_pipeline(pdf_path: str):
 
     log("Pipeline finished")
 
+    # -------------------------
+    # CONFIDENCE
+    # -------------------------
+    confidence = compute_confidence(
+        elevation_pages,
+        project_specs,
+        survey_data,
+        scale_data,
+        line_items,
+        grand_total,
+    )
+
     return {
         "project_specs": project_specs,
         "survey_data": survey_data,
@@ -72,4 +130,5 @@ def run_pipeline(pdf_path: str):
         "line_items": line_items,
         "grand_total": grand_total,
         "logs": logs,
+        "confidence": confidence,
     }
