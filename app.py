@@ -1,4 +1,6 @@
 from fastapi import FastAPI, BackgroundTasks, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+
 from datetime import datetime
 import uuid
 import os
@@ -48,6 +50,17 @@ os.makedirs(ERROR_DIR, exist_ok=True)
 # FastAPI App
 # -----------------------------
 app = FastAPI(title="Simpson Pipeline Backend")
+
+# -----------------------------
+# CORS
+# -----------------------------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],   # restrict in prod
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # -----------------------------
