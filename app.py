@@ -4,24 +4,28 @@ import uuid
 import os
 import shutil
 import json
+from dotenv import load_dotenv
 
 from pymongo import MongoClient
 
 from pipeline.runner import run_pipeline
 
 
+load_dotenv()
 
 # -----------------------------
-# Mongo Setup (MongoDB Atlas)
+# Mongo Setup (MongoDB Atlas via .env)
 # -----------------------------
-MONGO_URL = (
-   "mongodb+srv://abubakarabdullah:DtZ1DAu5IMp83rVI@cluster0.clmrsac.mongodb.net/?appName=Cluster0"
-)
+MONGO_URL = os.getenv("MONGO_URL")
+
+if not MONGO_URL:
+    raise RuntimeError("MONGO_URL not set in .env file")
 
 client = MongoClient(MONGO_URL)
 
 db = client["simpson_pipeline"]
 runs_collection = db["runs"]
+
 
 
 # -----------------------------
