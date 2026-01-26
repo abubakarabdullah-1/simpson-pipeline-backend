@@ -40,16 +40,28 @@ runs_collection = db["runs"]
 UPLOAD_DIR = "uploads"
 OUTPUT_DIR = "outputs"
 ERROR_DIR = "error_logs"
+LOGS_DIR = "logs"
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(ERROR_DIR, exist_ok=True)
+os.makedirs(LOGS_DIR, exist_ok=True)
 
+
+from fastapi.staticfiles import StaticFiles
 
 # -----------------------------
 # FastAPI App
 # -----------------------------
 app = FastAPI(title="Simpson Pipeline Backend")
+
+# -----------------------------
+# Static Mounts
+# -----------------------------
+app.mount(f"/{OUTPUT_DIR}", StaticFiles(directory=OUTPUT_DIR), name=OUTPUT_DIR)
+app.mount(f"/{LOGS_DIR}", StaticFiles(directory=LOGS_DIR), name=LOGS_DIR)
+app.mount(f"/{ERROR_DIR}", StaticFiles(directory=ERROR_DIR), name=ERROR_DIR)
+app.mount(f"/{UPLOAD_DIR}", StaticFiles(directory=UPLOAD_DIR), name=UPLOAD_DIR)
 
 # -----------------------------
 # CORS......
@@ -114,7 +126,7 @@ async def trigger_pipeline(
 def run_and_store(run_id: str, pdf_path: str):
 
     try:
-        result = run_pipeline(pdf_path)
+        result = run_pipeline(pdf_path, run_id=run_id)
 
         # ------------------
         # Create Excel FIRST
@@ -141,6 +153,8 @@ def run_and_store(run_id: str, pdf_path: str):
             "result": result,
             "result_file": json_path,
             "excel_file": excel_path,
+            "debug_pdf": result.get("debug_pdf"),
+            "log_file": result.get("log_file"),
             "ended_at": datetime.utcnow(),
             "confidence": result.get("confidence"),
         }
@@ -190,6 +204,7 @@ def run_and_store(run_id: str, pdf_path: str):
         except Exception as mongo_exc:
             print("!!! FAILED TO WRITE ERROR TO MONGO !!!")
             print(mongo_exc)
+
 
 
 # -----------------------------

@@ -50,11 +50,13 @@ INPUT_DIR = "cron_inputs"
 ARCHIVE_DIR = "cron_archive"
 OUTPUT_DIR = "outputs"
 ERROR_DIR = "error_logs"
+LOGS_DIR = "logs"
 
 os.makedirs(INPUT_DIR, exist_ok=True)
 os.makedirs(ARCHIVE_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(ERROR_DIR, exist_ok=True)
+os.makedirs(LOGS_DIR, exist_ok=True)
 
 
 # -----------------------------
@@ -83,7 +85,7 @@ def run_batch():
         runs_collection.insert_one(doc)
 
         try:
-            result = run_pipeline(pdf_path)
+            result = run_pipeline(pdf_path, run_id=run_id)
 
             # ------------------
             # Create Excel FIRST
@@ -109,6 +111,8 @@ def run_batch():
                 "result": result,
                 "result_file": json_path,
                 "excel_file": excel_path,
+                "debug_pdf": result.get("debug_pdf"),
+                "log_file": result.get("log_file"),
                 "ended_at": datetime.utcnow(),
                 "confidence": result.get("confidence"),
             }
