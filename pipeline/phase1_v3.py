@@ -17,17 +17,16 @@ MODEL_NAME = "qwen3-vl:30b-a3b-instruct"
 # ==========================================
 def generate_debug_thumbnail(page, category, reason):
     try:
-        pix = page.get_pixmap(matrix=fitz.Matrix(0.3, 0.3)) 
+        # Increased resolution from 0.3 to 1.5 for better quality
+        pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5)) 
         img = Image.open(io.BytesIO(pix.tobytes("png")))
         draw = ImageDraw.Draw(img)
         
         is_actionable = category in ["Exterior_Elevation", "Schedule", "Type_Definition", "Floor_Plan"]
         color = (0, 255, 0) if is_actionable else (255, 0, 0)
         
+        # Only draw border, no text (text is added by debug_pdf_collector)
         draw.rectangle([0, 0, img.width-1, img.height-1], outline=color, width=5)
-        # Background box for text
-        draw.rectangle([10, 10, 250, 50], fill=(255, 255, 255))
-        draw.text((15, 20), f"{category}", fill=(0, 0, 0))
         return img
     except: return None
 
