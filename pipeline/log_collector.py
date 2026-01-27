@@ -83,7 +83,8 @@ class LogCollector(object):
             r"P\s*(\d+)[:\s]", 
             r"Page\s*(\d+)[:\s]",
             r"Processing Page\s*(\d+)",
-            r"Processing P\s*(\d+)"
+            r"Processing P\s*(\d+)",
+            r"Calibrating Page\s*(\d+)"
         ]
         
         # Process logs in phase order usually: 1 -> 2 -> 3 -> 4 -> 5
