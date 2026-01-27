@@ -40,6 +40,7 @@ def create_excel_from_result(result: dict, output_path: str):
         "Page",
         "View",
         "Description",
+        "Dimensions",
         "EA",
         "Unit_SF",
         "Total_SF",
@@ -51,6 +52,7 @@ def create_excel_from_result(result: dict, output_path: str):
                 item.get("Page"),
                 item.get("View"),
                 item.get("Description"),
+                item.get("Dimensions", ""),
                 item.get("Count"),
                 item.get("Unit_SF"),
                 item.get("Total_SF"),
@@ -100,7 +102,8 @@ def create_excel_from_result(result: dict, output_path: str):
                       ws_ded.append([
                         page_num,
                         view_label,
-                        f"Opening {clean_tag} [Missing Spec]",
+                        f"Opening {clean_tag}",
+                        "MISSING",
                         count,
                         0.0,
                         0.0

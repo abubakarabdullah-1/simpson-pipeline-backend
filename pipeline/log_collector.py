@@ -160,6 +160,8 @@ class LogCollector(object):
                             pages[current_page][phase].append({
                                 "view": p3_match.group(1),
                                 "counts": counts,
+                                "total_detected": sum(counts.values()),
+                                "detected_tags": list(counts.keys()),
                                 "log": msg
                             })
                         except:
