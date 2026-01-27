@@ -15,7 +15,7 @@ def create_excel_from_result(result: dict, output_path: str):
     total_deductions = sum(
         item.get("Total_SF", 0)
         for item in line_items
-        if item.get("Category") == "Deduction"
+        if str(item.get("Category", "")).strip().lower() == "deduction"
     )
 
     # ===============================
@@ -44,7 +44,7 @@ def create_excel_from_result(result: dict, output_path: str):
     ])
 
     for item in line_items:
-        if item.get("Category") == "Deduction":
+        if str(item.get("Category", "")).strip().lower() == "deduction":
             ws_ded.append([
                 item.get("Page"),
                 item.get("View"),
