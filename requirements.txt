@@ -13,10 +13,18 @@ pymupdf
 scikit-learn
 scipy
 
-torch
-torchvision
+torch>=2.5.1
+torchvision>=0.20.1
+
+# SAM3 Segmentation
+sam2
+huggingface-hub
 
 shapely
 matplotlib
 requests
 tqdm
+ollama
+python-dotenv
+openpyxl
+gradio

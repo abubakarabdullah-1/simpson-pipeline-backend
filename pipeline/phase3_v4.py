@@ -10,9 +10,99 @@ from PIL import Image, ImageDraw
 MODEL_NAME = "qwen3-vl:30b-a3b-instruct"
 
 # ==========================================
-# 1. VIEW DETECTOR (Global Scout)
+# 1. VIEW DETECTOR (SAM3-Enhanced Global Scout)
 # ==========================================
-def detect_drawing_views(page_image):
+def detect_drawing_views(page_image, use_sam3=True):
+    """
+    Detect distinct drawing views on an architectural sheet using SAM3 or VLM.
+    
+    Args:
+        page_image: PIL Image of the page
+        use_sam3: Whether to use SAM3 for view detection (default: True)
+    
+    Returns:
+        List of dicts with 'label' and 'box_1000' keys
+    """
+    # Convert to numpy array for SAM3
+    img_array = np.array(page_image)
+    
+    # Try SAM3 automatic segmentation first
+    if use_sam3:
+        try:
+            from pipeline.sam3_segmentation import segment_building_automatic
+            
+            print("[SAM3] Detecting drawing views with SAM3...")
+            masks, masks_info = segment_building_automatic(img_array, min_area_ratio=0.01, max_area_ratio=0.90)
+            
+            if masks_info and len(masks_info) > 0:
+                # Convert SAM3 masks to bounding boxes
+                views = []
+                img_h, img_w = img_array.shape[:2]
+                
+                # Sort masks by area (largest first) and stability score
+                sorted_masks = sorted(
+                    masks_info, 
+                    key=lambda x: x['area'] * x['stability_score'], 
+                    reverse=True
+                )
+                
+                for idx, mask_info in enumerate(sorted_masks[:6]):  # Limit to top 6 views
+                    bbox = mask_info['bbox']  # [x, y, width, height]
+                    x, y, w, h = bbox
+                    
+                    # Convert to normalized coordinates [x0, y0, x1, y1] in 0-1000 scale
+                    x0_norm = int((x / img_w) * 1000)
+                    y0_norm = int((y / img_h) * 1000)
+                    x1_norm = int(((x + w) / img_w) * 1000)
+                    y1_norm = int(((y + h) / img_h) * 1000)
+                    
+                    # Generate label based on position
+                    area_ratio = mask_info['area'] / (img_h * img_w)
+                    
+                    # If it's very large, it might be the main view
+                    if area_ratio > 0.5:
+                        label = "Main Elevation"
+                    else:
+                        # Position-based naming
+                        center_y = y + h/2
+                        center_x = x + w/2
+                        
+                        if center_y < img_h * 0.33:
+                            pos_y = "Top"
+                        elif center_y < img_h * 0.67:
+                            pos_y = "Middle"
+                        else:
+                            pos_y = "Bottom"
+                        
+                        if center_x < img_w * 0.33:
+                            pos_x = "Left"
+                        elif center_x < img_w * 0.67:
+                            pos_x = "Center"
+                        else:
+                            pos_x = "Right"
+                        
+                        label = f"View {idx+1} ({pos_y} {pos_x})"
+                    
+                    views.append({
+                        "label": label,
+                        "box_1000": [x0_norm, y0_norm, x1_norm, y1_norm],
+                        "confidence": float(mask_info['stability_score']),
+                        "area_ratio": float(area_ratio)
+                    })
+                
+                if views:
+                    print(f"[SAM3] Detected {len(views)} views using SAM3")
+                    return views
+                else:
+                    print("[SAM3] No valid views detected, falling back to VLM")
+            else:
+                print("[SAM3] No masks found, falling back to VLM")
+                
+        except Exception as e:
+            print(f"[SAM3] Error in view detection: {e}, falling back to VLM")
+    
+    # Fallback to VLM (original method)
+    print("[VLM] Detecting views with Vision Language Model...")
     byte_arr = io.BytesIO()
     page_image.save(byte_arr, format='PNG')
     img_bytes = byte_arr.getvalue()
@@ -27,9 +117,20 @@ def detect_drawing_views(page_image):
         response = ollama.chat(model=MODEL_NAME, messages=[{'role': 'user', 'content': prompt, 'images': [img_bytes]}])
         content = response['message']['content']
         match = re.search(r"\{.*\}", content, re.DOTALL)
-        if match: return json.loads(match.group(0)).get("views", [])
-    except: pass
+        if match: 
+            views = json.loads(match.group(0)).get("views", [])
+            if views:
+                print(f"[VLM] Detected {len(views)} views using VLM")
+                return views
+    except Exception as e:
+        print(f"[VLM] Error: {e}")
+    
+    # Ultimate fallback: full page
+    print("[FALLBACK] Using full page as single view")
     return [{"label": "Full Page View", "box_1000": [0,0,1000,1000]}]
+
+
+
 
 # ==========================================
 # 2. GEOFENCING ENGINE (The Spatial Filter)
@@ -62,6 +163,7 @@ def generate_building_mask(page, crop_rect, dilation_px=50):
         mask = cv2.dilate(mask, kernel_dil, iterations=1)
 
     return mask, (pix.width, pix.height)
+
 
 def is_point_in_mask(pt, mask, mask_dims, crop_rect):
     rel_x = pt[0] - crop_rect.x0

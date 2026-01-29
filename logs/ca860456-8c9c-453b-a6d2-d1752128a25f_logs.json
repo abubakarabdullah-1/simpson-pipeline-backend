@@ -1,13 +1,13 @@
 {
-  "run_id": "abbb7be2-3f00-4075-aa94-dbb4fddf2e93",
-  "generated_at": "2026-01-27T16:39:56.727708",
+  "run_id": "ca860456-8c9c-453b-a6d2-d1752128a25f",
+  "generated_at": "2026-01-28T15:54:39.285413",
   "pages": {
     "1": {
       "phase1": [
         {
-          "category": "Irrelevant",
-          "reason": "VLM Failed",
-          "log": "P1: [Irrelevant] (VLM Failed)"
+          "category": "Floor_Plan",
+          "reason": "Title Block Match",
+          "log": "P1: [Floor_Plan] (Title Block Match)"
         }
       ],
       "phase2": [],
