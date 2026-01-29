@@ -1,0 +1,585 @@
+{
+  "run_id": "880f0c56-87fc-495b-8ac2-5599965780a6",
+  "generated_at": "2026-01-29T15:27:39.897787",
+  "pages": {
+    "1": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "VLM Failed",
+          "log": "P1: [Irrelevant] (VLM Failed)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "2": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "VLM Failed",
+          "log": "P2: [Irrelevant] (VLM Failed)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "3": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "VLM Failed",
+          "log": "P3: [Irrelevant] (VLM Failed)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "4": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "VLM Failed",
+          "log": "P4: [Irrelevant] (VLM Failed)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "5": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "Keyword Blocked",
+          "log": "P5: [Irrelevant] (Keyword Blocked)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "6": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "VLM Failed",
+          "log": "P6: [Irrelevant] (VLM Failed)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "7": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "VLM Failed",
+          "log": "P7: [Irrelevant] (VLM Failed)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "8": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "VLM Failed",
+          "log": "P8: [Irrelevant] (VLM Failed)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "9": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "VLM Failed",
+          "log": "P9: [Irrelevant] (VLM Failed)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "10": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "VLM Failed",
+          "log": "P10: [Irrelevant] (VLM Failed)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "11": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "VLM Failed",
+          "log": "P11: [Irrelevant] (VLM Failed)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "12": {
+      "phase1": [
+        {
+          "category": "Schedule",
+          "reason": "Title Block Match",
+          "log": "P12: [Schedule] (Title Block Match)"
+        }
+      ],
+      "phase2": [
+        {
+          "action": "Reading",
+          "target": "Table",
+          "mode": "Schedule Mode",
+          "log": "P12: Reading Table (Schedule Mode)..."
+        },
+        {
+          "summary": true,
+          "windows": 0,
+          "doors": 0,
+          "log": "Cataloged 0 Windows, 0 Doors."
+        }
+      ],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "13": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "Keyword Blocked",
+          "log": "P13: [Irrelevant] (Keyword Blocked)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "14": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "Keyword Blocked",
+          "log": "P14: [Irrelevant] (Keyword Blocked)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "15": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "VLM Failed",
+          "log": "P15: [Irrelevant] (VLM Failed)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "16": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "VLM Failed",
+          "log": "P16: [Irrelevant] (VLM Failed)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "17": {
+      "phase1": [
+        {
+          "category": "Floor_Plan",
+          "reason": "Title Block Match",
+          "log": "P17: [Floor_Plan] (Title Block Match)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "18": {
+      "phase1": [
+        {
+          "category": "Floor_Plan",
+          "reason": "Title Block Match",
+          "log": "P18: [Floor_Plan] (Title Block Match)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "19": {
+      "phase1": [
+        {
+          "category": "Floor_Plan",
+          "reason": "Title Block Match",
+          "log": "P19: [Floor_Plan] (Title Block Match)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "20": {
+      "phase1": [
+        {
+          "category": "Floor_Plan",
+          "reason": "Title Block Match",
+          "log": "P20: [Floor_Plan] (Title Block Match)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "21": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "VLM Failed",
+          "log": "P21: [Irrelevant] (VLM Failed)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "22": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "VLM Failed",
+          "log": "P22: [Irrelevant] (VLM Failed)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "23": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "VLM Failed",
+          "log": "P23: [Irrelevant] (VLM Failed)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "24": {
+      "phase1": [
+        {
+          "category": "Exterior_Elevation",
+          "reason": "Title Block Match",
+          "log": "P24: [Exterior_Elevation] (Title Block Match)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [
+        "> Processing Page 24...",
+        "[SAM3] Error in view detection: No module named 'torch', falling back to VLM",
+        "[VLM] Detecting views with Vision Language Model...",
+        "[VLM] Error: Failed to connect to Ollama. Please check that Ollama is downloaded, running and accessible. https://ollama.com/download",
+        "[FALLBACK] Using full page as single view"
+      ],
+      "phase4": [
+        "> Calibrating Page 24...",
+        {
+          "view": "Full Page Fallback",
+          "status": "FAILED",
+          "log": "- Full Page Fallback: FAILED. All candidates rejected."
+        }
+      ],
+      "phase5": [
+        "> Processing P24...",
+        "[SAM3] Error in view detection: No module named 'torch', falling back to VLM",
+        "[VLM] Detecting views with Vision Language Model...",
+        "[VLM] Error: Failed to connect to Ollama. Please check that Ollama is downloaded, running and accessible. https://ollama.com/download",
+        "[FALLBACK] Using full page as single view"
+      ],
+      "general": []
+    },
+    "25": {
+      "phase1": [
+        {
+          "category": "Exterior_Elevation",
+          "reason": "Title Block Match",
+          "log": "P25: [Exterior_Elevation] (Title Block Match)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [
+        "> Processing Page 25...",
+        "[SAM3] Error in view detection: No module named 'torch', falling back to VLM",
+        "[VLM] Detecting views with Vision Language Model...",
+        "[VLM] Error: Failed to connect to Ollama. Please check that Ollama is downloaded, running and accessible. https://ollama.com/download",
+        "[FALLBACK] Using full page as single view",
+        "--- [Phase 3] Complete. ---"
+      ],
+      "phase4": [
+        "> Calibrating Page 25...",
+        {
+          "view": "Full Page Fallback",
+          "status": "FAILED",
+          "log": "- Full Page Fallback: FAILED. All candidates rejected."
+        }
+      ],
+      "phase5": [
+        "> Processing P25...",
+        "[SAM3] Error in view detection: No module named 'torch', falling back to VLM",
+        "[VLM] Detecting views with Vision Language Model...",
+        "[VLM] Error: Failed to connect to Ollama. Please check that Ollama is downloaded, running and accessible. https://ollama.com/download",
+        "[FALLBACK] Using full page as single view"
+      ],
+      "general": []
+    },
+    "26": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "Section View",
+          "log": "P26: [Irrelevant] (Section View)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "27": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "Section View",
+          "log": "P27: [Irrelevant] (Section View)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "28": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "Section View",
+          "log": "P28: [Irrelevant] (Section View)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "29": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "Section View",
+          "log": "P29: [Irrelevant] (Section View)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "30": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "Section View",
+          "log": "P30: [Irrelevant] (Section View)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "31": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "Section View",
+          "log": "P31: [Irrelevant] (Section View)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "32": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "Section View",
+          "log": "P32: [Irrelevant] (Section View)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "33": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "Section View",
+          "log": "P33: [Irrelevant] (Section View)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "34": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "Section View",
+          "log": "P34: [Irrelevant] (Section View)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "35": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "Section View",
+          "log": "P35: [Irrelevant] (Section View)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "36": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "Section View",
+          "log": "P36: [Irrelevant] (Section View)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "37": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "VLM Failed",
+          "log": "P37: [Irrelevant] (VLM Failed)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    }
+  },
+  "summary": {
+    "phase1_count": 38,
+    "phase2_count": 3,
+    "phase3_count": 12,
+    "phase4_count": 5,
+    "phase5_count": 11,
+    "general_count": 0,
+    "total_logs": 69
+  }
+}

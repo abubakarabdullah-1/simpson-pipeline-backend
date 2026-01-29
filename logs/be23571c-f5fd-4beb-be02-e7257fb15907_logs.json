@@ -1,0 +1,43 @@
+{
+  "run_id": "be23571c-f5fd-4beb-be02-e7257fb15907",
+  "generated_at": "2026-01-29T15:24:21.789757",
+  "pages": {
+    "1": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "VLM Failed",
+          "log": "P1: [Irrelevant] (VLM Failed)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    },
+    "2": {
+      "phase1": [
+        {
+          "category": "Irrelevant",
+          "reason": "VLM Failed",
+          "log": "P2: [Irrelevant] (VLM Failed)"
+        }
+      ],
+      "phase2": [],
+      "phase3": [],
+      "phase4": [],
+      "phase5": [],
+      "general": []
+    }
+  },
+  "summary": {
+    "phase1_count": 3,
+    "phase2_count": 2,
+    "phase3_count": 2,
+    "phase4_count": 1,
+    "phase5_count": 1,
+    "general_count": 0,
+    "total_logs": 9
+  }
+}

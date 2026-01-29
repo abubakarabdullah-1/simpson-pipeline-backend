@@ -31,7 +31,23 @@ MONGO_URL = os.getenv("MONGO_URL")
 if not MONGO_URL:
     raise RuntimeError("MONGO_URL not set in .env file")
 
-client = MongoClient(MONGO_URL)
+client = MongoClient(
+    MONGO_URL,
+    serverSelectionTimeoutMS=10000,  # 10 seconds timeout
+    connectTimeoutMS=10000,
+    socketTimeoutMS=10000,
+    retryWrites=True,
+    retryReads=True
+)
+
+# Test connection at startup
+try:
+    client.admin.command('ping')
+    print("✅ MongoDB connected successfully")
+except Exception as e:
+    print(f"⚠️ MongoDB connection warning: {e}")
+    print("The app will start but database operations may fail")
+
 db = client["simpson_pipeline"]
 runs_collection = db["runs"]
 
@@ -77,14 +93,14 @@ app.add_middleware(
         "http://localhost:5173",
         "http://localhost:8000",
         "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:8000"
+        "http://127.0.0.1:5173",    
+        "http://127.0.0.1:8000",
+        "http://13.60.240.124:3000"
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 # -----------------------------
 # Helpers
@@ -99,93 +115,103 @@ def stringify_keys(obj):
 
 
 # -----------------------------
-# Trigger Pipeline - Single PDF
+# Trigger Pipeline - Unified Endpoint
 # -----------------------------
-@app.post("/pipeline/run/single")
-async def trigger_pipeline_single(
-    background: BackgroundTasks,
-    pdf: UploadFile = File(...)
-):
-    """
-    Process a single PDF file through the pipeline.
-    """
-    run_id = str(uuid.uuid4())
-    filename = f"{run_id}.pdf"
-    file_path = os.path.join(UPLOAD_DIR, filename)
-
-    # Save the single PDF file
-    pdf_bytes = await pdf.read()
-    with open(file_path, "wb") as f:
-        f.write(pdf_bytes)
-
-    doc = {
-        "run_id": run_id,
-        "status": "RUNNING",
-        "pdf_file": file_path,
-        "started_at": datetime.utcnow(),
-    }
-
-    runs_collection.insert_one(doc)
-
-    background.add_task(run_and_store, run_id, file_path)
-
-    return {
-        "run_id": run_id,
-        "status": "started",
-        "message": "Single PDF processing started"
-    }
-
-
-# -----------------------------
-# Trigger Pipeline - Multiple PDFs
-# -----------------------------
-@app.post("/pipeline/run/multiple")
-async def trigger_pipeline_multiple(
+@app.post("/pipeline/run")
+async def trigger_pipeline(
     background: BackgroundTasks,
     pdfs: List[UploadFile] = File(...)
 ):
-    """
-    Process multiple PDF files by merging them into a single PDF and running the pipeline.
-    """
-    if len(pdfs) < 2:
+    
+    if not pdfs or len(pdfs) == 0:
         raise HTTPException(
             status_code=400, 
-            detail="Multiple endpoint requires at least 2 PDF files. Use /pipeline/run/single for a single file."
+            detail="At least one PDF file is required"
         )
 
     run_id = str(uuid.uuid4())
-    merged_filename = f"{run_id}_merged.pdf"
-    file_path = os.path.join(UPLOAD_DIR, merged_filename)
-
-    # Merge multiple PDFs into a single PDF
-    merged_doc = fitz.open()
-    for pdf_file in pdfs:
-        # Read bytes into memory
-        pdf_bytes = await pdf_file.read()
-        with fitz.open(stream=pdf_bytes, filetype="pdf") as src_doc:
-            merged_doc.insert_pdf(src_doc)
     
-    merged_doc.save(file_path)
-    merged_doc.close()
+    # Handle single file upload
+    if len(pdfs) == 1:
+        filename = f"{run_id}.pdf"
+        file_path = os.path.join(UPLOAD_DIR, filename)
 
-    doc = {
-        "run_id": run_id,
-        "status": "RUNNING",
-        "pdf_file": file_path,
-        "pdf_count": len(pdfs),
-        "started_at": datetime.utcnow(),
-    }
+        # Save the single PDF file
+        pdf_bytes = await pdfs[0].read()
+        with open(file_path, "wb") as f:
+            f.write(pdf_bytes)
 
-    runs_collection.insert_one(doc)
+        doc = {
+            "run_id": run_id,
+            "status": "RUNNING",
+            "pdf_file": file_path,
+            "pdf_count": 1,
+            "started_at": datetime.utcnow(),
+        }
 
-    background.add_task(run_and_store, run_id, file_path)
+        try:
+            runs_collection.insert_one(doc)
+            background.add_task(run_and_store, run_id, file_path)
+        except Exception as e:
+            # Clean up the uploaded file if DB insert fails
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            raise HTTPException(
+                status_code=503,
+                detail=f"Database connection error: {str(e)}. Please check your MongoDB connection."
+            )
 
-    return {
-        "run_id": run_id,
-        "status": "started",
-        "pdf_count": len(pdfs),
-        "message": f"Merged {len(pdfs)} PDFs and started processing"
-    }
+        return {
+            "run_id": run_id,
+            "status": "started",
+            "pdf_count": 1,
+            "message": "Single PDF processing started"
+        }
+    
+    # Handle multiple file uploads
+    else:
+        merged_filename = f"{run_id}_merged.pdf"
+        file_path = os.path.join(UPLOAD_DIR, merged_filename)
+
+        # Merge multiple PDFs into a single PDF
+        merged_doc = fitz.open()
+        for pdf_file in pdfs:
+            # Read bytes into memory
+            pdf_bytes = await pdf_file.read()
+            with fitz.open(stream=pdf_bytes, filetype="pdf") as src_doc:
+                merged_doc.insert_pdf(src_doc)
+        
+        merged_doc.save(file_path)
+        merged_doc.close()
+
+        doc = {
+            "run_id": run_id,
+            "status": "RUNNING",
+            "pdf_file": file_path,
+            "pdf_count": len(pdfs),
+            "started_at": datetime.utcnow(),
+        }
+
+        try:
+            runs_collection.insert_one(doc)
+            background.add_task(run_and_store, run_id, file_path)
+        except Exception as e:
+            # Clean up the merged file if DB insert fails
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            raise HTTPException(
+                status_code=503,
+                detail=f"Database connection error: {str(e)}. Please check your MongoDB connection."
+            )
+
+        return {
+            "run_id": run_id,
+            "status": "started",
+            "pdf_count": len(pdfs),
+            "message": f"Merged {len(pdfs)} PDFs and started processing"
+        }
+
+
 
 
 # -----------------------------
