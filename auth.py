@@ -7,11 +7,17 @@ by NextAuth on the frontend.
 """
 
 import os
-import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional, Dict
 from dotenv import load_dotenv
+
+# Import PyJWT - ensure PyJWT is installed, not the 'jwt' package
+try:
+    import jwt
+    from jwt.exceptions import ExpiredSignatureError, InvalidSignatureError, DecodeError
+except ImportError:
+    raise RuntimeError("PyJWT library not installed. Run: pip install PyJWT")
 
 load_dotenv()
 
@@ -82,19 +88,19 @@ def verify_token(token: str) -> Dict:
         # accessToken is optional, no validation needed
         return payload
         
-    except jwt.ExpiredSignatureError:
+    except ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired. Please log in again.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except jwt.InvalidSignatureError:
+    except InvalidSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token signature. Authentication failed.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except jwt.DecodeError:
+    except DecodeError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token is malformed. Please log in again.",
