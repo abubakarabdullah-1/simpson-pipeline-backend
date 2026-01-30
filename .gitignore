@@ -208,6 +208,8 @@ __marimo__/
 
 uploads/
 outputs/
+error_logs/
+logs/
 cron.log
 __pycache__/
 *.pyc

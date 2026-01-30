@@ -1,5 +1,6 @@
-from fastapi import FastAPI, BackgroundTasks, UploadFile, File, HTTPException
-from typing import List
+from fastapi import FastAPI, BackgroundTasks, UploadFile, File, HTTPException, Depends
+from fastapi.responses import FileResponse
+from typing import List, Dict
 import fitz  # PyMuPDF
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -15,6 +16,7 @@ from pymongo import MongoClient
 
 from pipeline.runner import run_pipeline
 from pipeline.excel_exporter import create_excel_from_result
+from auth import get_current_user
 
 
 # -----------------------------
@@ -66,20 +68,10 @@ os.makedirs(ERROR_DIR, exist_ok=True)
 os.makedirs(LOGS_DIR, exist_ok=True)
 
 
-from fastapi.staticfiles import StaticFiles
-
 # -----------------------------
 # FastAPI App
 # -----------------------------
 app = FastAPI(title="Simpson Pipeline Backend")
-
-# -----------------------------
-# Static Mounts
-# -----------------------------
-app.mount(f"/{OUTPUT_DIR}", StaticFiles(directory=OUTPUT_DIR), name=OUTPUT_DIR)
-app.mount(f"/{LOGS_DIR}", StaticFiles(directory=LOGS_DIR), name=LOGS_DIR)
-app.mount(f"/{ERROR_DIR}", StaticFiles(directory=ERROR_DIR), name=ERROR_DIR)
-app.mount(f"/{UPLOAD_DIR}", StaticFiles(directory=UPLOAD_DIR), name=UPLOAD_DIR)
 
 # -----------------------------
 # CORS......
@@ -88,14 +80,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://simpson.neuralogicgroup.com",
-        "https://www.simpson.neuralogicgroup.com",
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:8000",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",    
-        "http://127.0.0.1:8000",
-        "http://13.60.240.124:3000"
+        "https://www.simpson.neuralogicgroup.com"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -120,7 +105,8 @@ def stringify_keys(obj):
 @app.post("/pipeline/run")
 async def trigger_pipeline(
     background: BackgroundTasks,
-    pdfs: List[UploadFile] = File(...)
+    pdfs: List[UploadFile] = File(...),
+    user: Dict = Depends(get_current_user)
 ):
     
     if not pdfs or len(pdfs) == 0:
@@ -305,7 +291,7 @@ def run_and_store(run_id: str, pdf_path: str):
 # Status Endpoint
 # -----------------------------
 @app.get("/pipeline/{run_id}")
-def get_pipeline_status(run_id: str):
+def get_pipeline_status(run_id: str, user: Dict = Depends(get_current_user)):
 
     run = runs_collection.find_one(
         {"run_id": run_id},
@@ -316,3 +302,42 @@ def get_pipeline_status(run_id: str):
         raise HTTPException(status_code=404, detail="Run not found")
 
     return run
+
+
+# -----------------------------
+# Protected File Download Endpoints
+# -----------------------------
+@app.get("/outputs/{filename}")
+def download_output(filename: str, user: Dict = Depends(get_current_user)):
+    """Download output files (JSON, Excel, debug PDFs)"""
+    file_path = os.path.join(OUTPUT_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_path)
+
+
+@app.get("/logs/{filename}")
+def download_log(filename: str, user: Dict = Depends(get_current_user)):
+    """Download log files"""
+    file_path = os.path.join(LOGS_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_path)
+
+
+@app.get("/error_logs/{filename}")
+def download_error_log(filename: str, user: Dict = Depends(get_current_user)):
+    """Download error log files"""
+    file_path = os.path.join(ERROR_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_path)
+
+
+@app.get("/uploads/{filename}")
+def download_upload(filename: str, user: Dict = Depends(get_current_user)):
+    """Download uploaded PDF files"""
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_path)

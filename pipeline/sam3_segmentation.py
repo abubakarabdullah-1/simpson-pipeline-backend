@@ -17,9 +17,18 @@ import io
 # CONFIGURATION
 # ==========================================
 # ROBOFLOW CONFIGURATION
-ROBOFLOW_API_URL = os.getenv("ROBOFLOW_API_URL", "http://localhost:9001").rstrip("/")
-ROBOFLOW_API_KEY = os.getenv("ROBOFLOW_API_KEY", "w6CLKytmY6ccsKUC82GG")
-ROBOFLOW_MODEL_ID = os.getenv("ROBOFLOW_MODEL_ID", "version-2-rk7ss/2")
+ROBOFLOW_API_URL = os.getenv("ROBOFLOW_API_URL")
+ROBOFLOW_API_KEY = os.getenv("ROBOFLOW_API_KEY")
+ROBOFLOW_MODEL_ID = os.getenv("ROBOFLOW_MODEL_ID")
+
+if not ROBOFLOW_API_URL:
+    raise RuntimeError("ROBOFLOW_API_URL not set in .env file")
+if not ROBOFLOW_API_KEY:
+    raise RuntimeError("ROBOFLOW_API_KEY not set in .env file")
+if not ROBOFLOW_MODEL_ID:
+    raise RuntimeError("ROBOFLOW_MODEL_ID not set in .env file")
+
+ROBOFLOW_API_URL = ROBOFLOW_API_URL.rstrip("/")
 
 # ==========================================
 # ROBOFLOW INFERENCE CLIENT
