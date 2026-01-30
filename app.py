@@ -292,7 +292,7 @@ def run_and_store(run_id: str, pdf_path: str):
 # Status Endpoint
 # -----------------------------
 @app.get("/pipeline/{run_id}")
-def get_pipeline_status(run_id: str, user: Dict = Depends(get_current_user)):
+def get_pipeline_status(run_id: str):
 
     run = runs_collection.find_one(
         {"run_id": run_id},
@@ -306,10 +306,10 @@ def get_pipeline_status(run_id: str, user: Dict = Depends(get_current_user)):
 
 
 # -----------------------------
-# Protected File Download Endpoints
+# Public File Download Endpoints
 # -----------------------------
 @app.get("/outputs/{filename}")
-def download_output(filename: str, user: Dict = Depends(get_current_user)):
+def download_output(filename: str):
     """Download output files (JSON, Excel, debug PDFs)"""
     file_path = os.path.join(OUTPUT_DIR, filename)
     if not os.path.exists(file_path):
@@ -318,7 +318,7 @@ def download_output(filename: str, user: Dict = Depends(get_current_user)):
 
 
 @app.get("/logs/{filename}")
-def download_log(filename: str, user: Dict = Depends(get_current_user)):
+def download_log(filename: str):
     """Download log files"""
     file_path = os.path.join(LOGS_DIR, filename)
     if not os.path.exists(file_path):
@@ -327,7 +327,7 @@ def download_log(filename: str, user: Dict = Depends(get_current_user)):
 
 
 @app.get("/error_logs/{filename}")
-def download_error_log(filename: str, user: Dict = Depends(get_current_user)):
+def download_error_log(filename: str):
     """Download error log files"""
     file_path = os.path.join(ERROR_DIR, filename)
     if not os.path.exists(file_path):
@@ -336,7 +336,7 @@ def download_error_log(filename: str, user: Dict = Depends(get_current_user)):
 
 
 @app.get("/uploads/{filename}")
-def download_upload(filename: str, user: Dict = Depends(get_current_user)):
+def download_upload(filename: str):
     """Download uploaded PDF files"""
     file_path = os.path.join(UPLOAD_DIR, filename)
     if not os.path.exists(file_path):

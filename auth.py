@@ -61,19 +61,17 @@ def verify_token(token: str) -> Dict:
             }
         )
         
-        # Validate required fields from NextAuth token
+        # Validate required fields from JWT token
+        # Token structure: { id, email, iat, exp }
         user_id = payload.get("id")
         user_email = payload.get("email")
-        user_name = payload.get("name")
         
-        # Check for required fields
+        # Check for required fields (only id and email)
         missing_fields = []
         if not user_id:
             missing_fields.append("id")
         if not user_email:
             missing_fields.append("email")
-        if not user_name:
-            missing_fields.append("name")
         
         if missing_fields:
             raise HTTPException(
@@ -85,7 +83,6 @@ def verify_token(token: str) -> Dict:
         # Log successful authentication (optional, for debugging)
         print(f"✅ Authenticated user: {user_id} ({user_email})")
         
-        # accessToken is optional, no validation needed
         return payload
         
     except ExpiredSignatureError:
