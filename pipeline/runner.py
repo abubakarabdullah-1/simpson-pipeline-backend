@@ -29,7 +29,7 @@ else:
 
 def update_heartbeat(run_id: str):
     """Update last_updated timestamp to show pipeline is alive"""
-    if runs_collection and run_id:
+    if runs_collection is not None and run_id:
         runs_collection.update_one(
             {"run_id": run_id},
             {"$set": {"last_updated": datetime.utcnow()}}
