@@ -4,12 +4,13 @@ from typing import List, Dict
 import fitz  # PyMuPDF
 from fastapi.middleware.cors import CORSMiddleware
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 import os
 import shutil
 import json
 import traceback
+import asyncio
 
 from dotenv import load_dotenv
 from pymongo import MongoClient
@@ -89,6 +90,81 @@ app.add_middleware(
 )
 
 # -----------------------------
+# Pipeline Failure Detection
+# -----------------------------
+@app.on_event("startup")
+async def startup_recovery():
+    """Mark abandoned pipelines as FAILED on server startup"""
+    result = runs_collection.update_many(
+        {"status": {"$in": ["RUNNING", "IN_PROGRESS"]}},
+        {
+            "$set": {
+                "status": "FAILED",
+                "error": "Server was restarted while pipeline was running",
+                "failed_at": datetime.utcnow()
+            }
+        }
+    )
+    if result.modified_count > 0:
+        print(f"⚠️ Marked {result.modified_count} abandoned pipelines as FAILED")
+    
+    # Start timeout monitor
+    asyncio.create_task(monitor_timeouts())
+
+
+async def monitor_timeouts():
+    """Background task to check for timed-out pipelines with retry logic"""
+    timeout_minutes = 1  # Hardcoded timeout: 1 minute
+    max_retries = 2  # Number of retry attempts before marking as FAILED
+    
+    while True:
+        await asyncio.sleep(60)  # Check every minute
+        
+        timeout_threshold = datetime.utcnow() - timedelta(minutes=timeout_minutes)
+        
+        # Use cursor to avoid loading all documents into RAM
+        timed_out_pipelines = runs_collection.find(
+            {
+                "status": {"$in": ["RUNNING", "IN_PROGRESS"]},
+                "last_updated": {"$lt": timeout_threshold}
+            },
+            {"run_id": 1, "retry_count": 1}  # Only fetch needed fields
+        )
+        
+        failed_count = 0
+        for pipeline in timed_out_pipelines:
+            run_id = pipeline["run_id"]
+            retry_count = pipeline.get("retry_count", 0)
+            
+            if retry_count < max_retries:
+                # Increment retry count and reset last_updated
+                runs_collection.update_one(
+                    {"run_id": run_id},
+                    {
+                        "$set": {"last_updated": datetime.utcnow()},
+                        "$inc": {"retry_count": 1}
+                    }
+                )
+                print(f"⚠️ Pipeline {run_id} timed out - retry {retry_count + 1}/{max_retries}")
+            else:
+                # Max retries exceeded - mark as FAILED
+                runs_collection.update_one(
+                    {"run_id": run_id},
+                    {
+                        "$set": {
+                            "status": "FAILED",
+                            "error": f"Pipeline timed out after {max_retries} retry attempts",
+                            "failed_at": datetime.utcnow()
+                        }
+                    }
+                )
+                failed_count += 1
+        
+        if failed_count > 0:
+            print(f"❌ Marked {failed_count} pipelines as FAILED after {max_retries} retries")
+
+
+# -----------------------------
 # Helpers
 # -----------------------------
 def stringify_keys(obj):
@@ -134,6 +210,8 @@ async def trigger_pipeline(
             "pdf_file": file_path,
             "pdf_count": 1,
             "started_at": datetime.utcnow(),
+            "last_updated": datetime.utcnow(),
+            "retry_count": 0,
         }
 
         try:
@@ -177,6 +255,8 @@ async def trigger_pipeline(
             "pdf_file": file_path,
             "pdf_count": len(pdfs),
             "started_at": datetime.utcnow(),
+            "last_updated": datetime.utcnow(),
+            "retry_count": 0,
         }
 
         try:

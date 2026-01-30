@@ -10,6 +10,31 @@ from pipeline.debug_pdf_collector import collect_and_write_debug_pdf
 from pipeline.validator import validate_step
 from pipeline.log_collector import LogCollector
 
+import os
+from datetime import datetime
+from pymongo import MongoClient
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# MongoDB Connection for heartbeat updates
+MONGO_URL = os.getenv("MONGO_URL")
+if MONGO_URL:
+    client = MongoClient(MONGO_URL)
+    db = client["simpson_pipeline"]
+    runs_collection = db["runs"]
+else:
+    runs_collection = None
+
+
+def update_heartbeat(run_id: str):
+    """Update last_updated timestamp to show pipeline is alive"""
+    if runs_collection and run_id:
+        runs_collection.update_one(
+            {"run_id": run_id},
+            {"$set": {"last_updated": datetime.utcnow()}}
+        )
+
 
 # ==========================================
 # PIPELINE RUNNER — FINAL VERSION
@@ -32,6 +57,7 @@ def run_pipeline(pdf_path: str, run_id: str = None):
     # -------------------------
     # PHASE 1
     # -------------------------
+    update_heartbeat(run_id)
     with log_collector.capture_phase("phase1"):
         actionable_pages = phase1_v3.execute(pdf_path)
 
@@ -54,6 +80,7 @@ def run_pipeline(pdf_path: str, run_id: str = None):
     # -------------------------
     # PHASE 2
     # -------------------------
+    update_heartbeat(run_id)
     with log_collector.capture_phase("phase2"):
         project_specs, phase2_debug = phase2_v3.execute(
             pdf_path,
@@ -63,6 +90,7 @@ def run_pipeline(pdf_path: str, run_id: str = None):
     # -------------------------
     # PHASE 3
     # -------------------------
+    update_heartbeat(run_id)
     with log_collector.capture_phase("phase3"):
         survey_data, phase3_debug = phase3_v4.execute(
             pdf_path,
@@ -73,6 +101,7 @@ def run_pipeline(pdf_path: str, run_id: str = None):
     # -------------------------
     # PHASE 4
     # -------------------------
+    update_heartbeat(run_id)
     with log_collector.capture_phase("phase4"):
         scale_data, phase4_debug = phase4_v3.execute(
             pdf_path,
@@ -82,6 +111,7 @@ def run_pipeline(pdf_path: str, run_id: str = None):
     # -------------------------
     # PHASE 5
     # -------------------------
+    update_heartbeat(run_id)
     with log_collector.capture_phase("phase5"):
         line_items, grand_total, phase5_debug = phase5_v2.execute(
             pdf_path,
