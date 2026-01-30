@@ -114,7 +114,7 @@ async def startup_recovery():
 
 async def monitor_timeouts():
     """Background task to check for timed-out pipelines with retry logic"""
-    timeout_minutes = 1  # Hardcoded timeout: 1 minute
+    timeout_minutes = 1  # timeout: 1 minute
     max_retries = 2  # Number of retry attempts before marking as FAILED
     
     while True:
