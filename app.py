@@ -80,7 +80,12 @@ os.makedirs(LOGS_DIR, exist_ok=True)
 # -----------------------------
 # FastAPI App
 # -----------------------------
-app = FastAPI(title="Simpson Pipeline Backend")
+app = FastAPI(
+    title="Simpson Pipeline Backend",
+    docs_url=None,     # Disable Swagger UI
+    redoc_url=None,    # Disable Redoc
+    openapi_url=None   # Disable OpenAPI schema (completely hides /openapi.json)
+)
 
 # -----------------------------
 # CORS......
