@@ -6,7 +6,8 @@ Handles file uploads to S3 bucket with error handling
 import os
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
-from typing import Optional
+from typing import Optional, Dict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 def get_s3_client():
@@ -119,9 +120,22 @@ def upload_file_to_s3(
             # Generate region-specific S3 URL (permanent)
             s3_url = f"https://{bucket_name}.s3.{region}.amazonaws.com/{s3_key}"
         except ClientError as e:
-            # Fallback to region-agnostic URL if region detection fails
-            print(f"⚠️ Could not detect bucket region, using region-agnostic URL: {e}")
-            s3_url = f"https://{bucket_name}.s3.amazonaws.com/{s3_key}"
+            error_code = e.response.get('Error', {}).get('Code', '')
+            
+            # Handle missing GetBucketLocation permission gracefully
+            if error_code == 'AccessDenied':
+                # Use default region (user's region) as fallback
+                region = 'eu-north-1'
+                s3_url = f"https://{bucket_name}.s3.{region}.amazonaws.com/{s3_key}"
+                # Only log once to avoid spam
+                if not hasattr(upload_file_to_s3, '_logged_region_warning'):
+                    print(f"ℹ️  Note: s3:GetBucketLocation permission not available, using default region: {region}")
+                    upload_file_to_s3._logged_region_warning = True
+            else:
+                # Fallback to region-agnostic URL for other errors
+                s3_url = f"https://{bucket_name}.s3.amazonaws.com/{s3_key}"
+                print(f"⚠️ Could not detect bucket region: {error_code}")
+        
         
         # Generate presigned URL for temporary frontend access (30 minutes)
         try:
@@ -191,31 +205,65 @@ def get_content_type(file_path: str) -> Optional[str]:
     return content_types.get(extension)
 
 
-def upload_pipeline_outputs(run_id: str, files_dict: dict) -> dict:
+
+def upload_pipeline_outputs(run_id: str, files_dict: dict, cleanup_local: bool = False) -> dict:
     """
-    Upload multiple pipeline output files to S3 with presigned URLs
+    Upload multiple pipeline output files to S3 with presigned URLs (in parallel)
     
     Args:
         run_id: Pipeline run ID
         files_dict: Dictionary with file types as keys and local paths as values
                    Example: {'excel': '/path/to/file.xlsx', 'json': '/path/to/file.json'}
+        cleanup_local: If True, delete local files after successful S3 upload
     
     Returns:
         dict: Dictionary with file types as keys and upload info (URLs, presigned URLs) as values
     """
     s3_data = {}
     
+    # Prepare upload tasks
+    upload_tasks = []
     for file_type, local_path in files_dict.items():
         if local_path and os.path.exists(local_path):
-            # Create S3 key with run_id prefix
             filename = os.path.basename(local_path)
             s3_key = f"pipeline-outputs/{run_id}/{filename}"
-            
-            # Upload to S3
-            upload_result = upload_file_to_s3(local_path, s3_key)
-            
-            if upload_result:
-                s3_data[file_type] = upload_result
+            upload_tasks.append((file_type, local_path, s3_key))
     
+    if not upload_tasks:
+        return s3_data
+    
+    # Upload files in parallel using ThreadPoolExecutor
+    print(f"📤 Uploading {len(upload_tasks)} files to S3 in parallel...")
+    
+    def upload_single_file(task):
+        file_type, local_path, s3_key = task
+        result = upload_file_to_s3(local_path, s3_key)
+        return file_type, local_path, result
+    
+    with ThreadPoolExecutor(max_workers=min(4, len(upload_tasks))) as executor:
+        # Submit all upload tasks
+        future_to_task = {executor.submit(upload_single_file, task): task for task in upload_tasks}
+        
+        # Process results as they complete
+        for future in as_completed(future_to_task):
+            try:
+                file_type, local_path, upload_result = future.result()
+                
+                if upload_result:
+                    s3_data[file_type] = upload_result
+                    
+                    # Optional: Clean up local file after successful upload
+                    if cleanup_local:
+                        try:
+                            os.remove(local_path)
+                            print(f"🗑️  Deleted local file: {local_path}")
+                        except Exception as e:
+                            print(f"⚠️ Could not delete local file {local_path}: {e}")
+            except Exception as e:
+                task = future_to_task[future]
+                print(f"❌ Upload failed for {task[0]}: {e}")
+    
+    print(f"✅ Completed {len(s3_data)}/{len(upload_tasks)} uploads")
     return s3_data
+
 

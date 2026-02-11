@@ -306,7 +306,33 @@ def run_and_store(run_id: str, pdf_path: str):
             json.dump(result, f, indent=2)
 
         # ------------------
-        # Upload to S3
+        # MARK AS COMPLETED FIRST
+        # ------------------
+        # Mark pipeline as COMPLETED immediately after processing
+        # This prevents S3 upload issues from incorrectly marking the pipeline as failed
+        
+        mongo_payload = {
+            "status": "COMPLETED",
+            "result": result,
+            "result_file": json_path,
+            "excel_file": excel_path,
+            "debug_pdf": result.get("debug_pdf"),
+            "log_file": result.get("log_file"),
+            "ended_at": datetime.utcnow(),
+            "confidence": result.get("confidence"),
+            "s3_upload_status": "IN_PROGRESS",
+            "s3_data": {},
+        }
+
+        safe_payload = stringify_keys(mongo_payload)
+
+        runs_collection.update_one(
+            {"run_id": run_id},
+            {"$set": safe_payload},
+        )
+
+        # ------------------
+        # Upload to S3 (non-blocking for pipeline completion)
         # ------------------
         files_to_upload = {
             "excel": excel_path,
@@ -320,31 +346,29 @@ def run_and_store(run_id: str, pdf_path: str):
         if result.get("log_file"):
             files_to_upload["log_file"] = result.get("log_file")
         
-        # Upload all files to S3
-        s3_data = upload_pipeline_outputs(run_id, files_to_upload)
+        # Upload all files to S3 in parallel
+        try:
+            s3_data = upload_pipeline_outputs(run_id, files_to_upload, cleanup_local=False)
+            
+            # Update MongoDB with S3 URLs after successful upload
+            runs_collection.update_one(
+                {"run_id": run_id},
+                {"$set": {
+                    "s3_data": stringify_keys(s3_data),
+                    "s3_upload_status": "COMPLETED"
+                }},
+            )
+        except Exception as s3_exc:
+            # S3 upload failed, but pipeline itself succeeded
+            print(f"⚠️ S3 upload failed for run {run_id}: {s3_exc}")
+            runs_collection.update_one(
+                {"run_id": run_id},
+                {"$set": {
+                    "s3_upload_status": "FAILED",
+                    "s3_error": str(s3_exc)
+                }},
+            )
 
-        # ------------------
-        # Mongo-safe payload
-        # ------------------
-        mongo_payload = {
-            "status": "COMPLETED",
-            "result": result,
-            "result_file": json_path,
-            "excel_file": excel_path,
-            "debug_pdf": result.get("debug_pdf"),
-            "log_file": result.get("log_file"),
-            "ended_at": datetime.utcnow(),
-            "confidence": result.get("confidence"),
-            # Add S3 data with presigned URLs if uploaded successfully
-            "s3_data": s3_data if s3_data else {},
-        }
-
-        safe_payload = stringify_keys(mongo_payload)
-
-        runs_collection.update_one(
-            {"run_id": run_id},
-            {"$set": safe_payload},
-        )
 
     except Exception as exc:
 
