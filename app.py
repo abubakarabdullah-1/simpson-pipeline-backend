@@ -348,7 +348,7 @@ def run_and_store(run_id: str, pdf_path: str):
         
         # Upload all files to S3 in parallel
         try:
-            s3_data = upload_pipeline_outputs(run_id, files_to_upload, cleanup_local=False)
+            s3_data = upload_pipeline_outputs(run_id, files_to_upload, cleanup_local=True)
             
             # Update MongoDB with S3 URLs after successful upload
             runs_collection.update_one(
@@ -358,6 +358,15 @@ def run_and_store(run_id: str, pdf_path: str):
                     "s3_upload_status": "COMPLETED"
                 }},
             )
+            
+            # Clean up the uploaded PDF file after successful S3 upload
+            try:
+                if os.path.exists(pdf_path):
+                    os.remove(pdf_path)
+                    print(f"🗑️  Deleted uploaded PDF: {pdf_path}")
+            except Exception as cleanup_exc:
+                print(f"⚠️ Could not delete uploaded PDF {pdf_path}: {cleanup_exc}")
+                
         except Exception as s3_exc:
             # S3 upload failed, but pipeline itself succeeded
             print(f"⚠️ S3 upload failed for run {run_id}: {s3_exc}")
