@@ -513,9 +513,21 @@ def stream_from_s3(s3_key: str, filename: str):
 @app.get("/outputs/{filename}")
 def download_output(filename: str):
     """Download output files (JSON, Excel, debug PDFs) from S3"""
-    # Extract run_id from filename (e.g. "abc-123.json" -> "abc-123")
+    
+    # 1. Try to extract run_id from filename (Standard way)
     # Handles: run_id.ext, run_id_debug.pdf
     run_id = filename.split('.')[0].split('_')[0]
+    
+    # 2. If it looks like a timestamp (e.g. starts with "202..."), lookup via Mongo
+    # Because old debug PDFs are named "YYYYMMDD_HHMMSS_debug.pdf" and don't contain run_id
+    if filename.startswith("202") or filename.startswith("203"):
+        print(f"🔍 Legacy filename detected: {filename}, looking up in MongoDB...")
+        run = runs_collection.find_one({"result.debug_pdf": {"$regex": filename}})
+        if run:
+            run_id = run["run_id"]
+            print(f"✅ Found run_id for legacy file: {run_id}")
+        else:
+            print(f"❌ Could not find run_id for file: {filename}")
     
     s3_key = f"pipeline-outputs/{run_id}/{filename}"
     return stream_from_s3(s3_key, filename)
