@@ -137,33 +137,9 @@ def upload_file_to_s3(
                 print(f"⚠️ Could not detect bucket region: {error_code}")
         
         
-        # Generate presigned URL for temporary frontend access (30 minutes)
-        try:
-            presigned_url = s3_client.generate_presigned_url(
-                'get_object',
-                Params={
-                    'Bucket': bucket_name,
-                    'Key': s3_key
-                },
-                ExpiresIn=1800  # 30 minutes = 1800 seconds
-            )
-            print(f"✅ Uploaded to S3: {s3_key}")
-            print(f"   Presigned URL valid for 30 minutes")
-            
-            # Return both permanent URL and presigned URL
-            return {
-                'url': s3_url,
-                'presigned_url': presigned_url,
-                'expires_in': 1800
-            }
-        except ClientError as e:
-            print(f"⚠️ Could not generate presigned URL: {e}")
-            # Return just the permanent URL if presigned URL generation fails
-            return {
-                'url': s3_url,
-                'presigned_url': None,
-                'expires_in': None
-            }
+        # Return just the permanent URL string
+        print(f"✅ Uploaded to S3: {s3_key}")
+        return s3_url
         
     except NoCredentialsError:
         print("⚠️ AWS credentials not found, skipping S3 upload")
