@@ -321,7 +321,7 @@ def run_and_store(run_id: str, pdf_path: str):
             files_to_upload["log_file"] = result.get("log_file")
         
         # Upload all files to S3
-        s3_urls = upload_pipeline_outputs(run_id, files_to_upload)
+        s3_data = upload_pipeline_outputs(run_id, files_to_upload)
 
         # ------------------
         # Mongo-safe payload
@@ -335,8 +335,8 @@ def run_and_store(run_id: str, pdf_path: str):
             "log_file": result.get("log_file"),
             "ended_at": datetime.utcnow(),
             "confidence": result.get("confidence"),
-            # Add S3 URLs if uploaded successfully
-            "s3_urls": s3_urls if s3_urls else {},
+            # Add S3 data with presigned URLs if uploaded successfully
+            "s3_data": s3_data if s3_data else {},
         }
 
         safe_payload = stringify_keys(mongo_payload)

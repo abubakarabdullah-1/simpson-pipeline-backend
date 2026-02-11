@@ -112,19 +112,44 @@ def upload_file_to_s3(
             bucket_location = s3_client.get_bucket_location(Bucket=bucket_name)
             region = bucket_location.get('LocationConstraint')
             
-            # Handle special case: us-east-1 returns None
+            # Handle special case: eu-north-1 returns None
             if region is None:
-                region = 'us-east-1'
+                region = 'eu-north-1'
             
-            # Generate region-specific S3 URL
+            # Generate region-specific S3 URL (permanent)
             s3_url = f"https://{bucket_name}.s3.{region}.amazonaws.com/{s3_key}"
         except ClientError as e:
             # Fallback to region-agnostic URL if region detection fails
             print(f"⚠️ Could not detect bucket region, using region-agnostic URL: {e}")
             s3_url = f"https://{bucket_name}.s3.amazonaws.com/{s3_key}"
         
-        print(f"✅ Uploaded to S3: {s3_key}")
-        return s3_url
+        # Generate presigned URL for temporary frontend access (30 minutes)
+        try:
+            presigned_url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={
+                    'Bucket': bucket_name,
+                    'Key': s3_key
+                },
+                ExpiresIn=1800  # 30 minutes = 1800 seconds
+            )
+            print(f"✅ Uploaded to S3: {s3_key}")
+            print(f"   Presigned URL valid for 30 minutes")
+            
+            # Return both permanent URL and presigned URL
+            return {
+                'url': s3_url,
+                'presigned_url': presigned_url,
+                'expires_in': 1800
+            }
+        except ClientError as e:
+            print(f"⚠️ Could not generate presigned URL: {e}")
+            # Return just the permanent URL if presigned URL generation fails
+            return {
+                'url': s3_url,
+                'presigned_url': None,
+                'expires_in': None
+            }
         
     except NoCredentialsError:
         print("⚠️ AWS credentials not found, skipping S3 upload")
@@ -168,7 +193,7 @@ def get_content_type(file_path: str) -> Optional[str]:
 
 def upload_pipeline_outputs(run_id: str, files_dict: dict) -> dict:
     """
-    Upload multiple pipeline output files to S3
+    Upload multiple pipeline output files to S3 with presigned URLs
     
     Args:
         run_id: Pipeline run ID
@@ -176,9 +201,9 @@ def upload_pipeline_outputs(run_id: str, files_dict: dict) -> dict:
                    Example: {'excel': '/path/to/file.xlsx', 'json': '/path/to/file.json'}
     
     Returns:
-        dict: Dictionary with file types as keys and S3 URLs as values
+        dict: Dictionary with file types as keys and upload info (URLs, presigned URLs) as values
     """
-    s3_urls = {}
+    s3_data = {}
     
     for file_type, local_path in files_dict.items():
         if local_path and os.path.exists(local_path):
@@ -187,9 +212,10 @@ def upload_pipeline_outputs(run_id: str, files_dict: dict) -> dict:
             s3_key = f"pipeline-outputs/{run_id}/{filename}"
             
             # Upload to S3
-            s3_url = upload_file_to_s3(local_path, s3_key)
+            upload_result = upload_file_to_s3(local_path, s3_key)
             
-            if s3_url:
-                s3_urls[file_type] = s3_url
+            if upload_result:
+                s3_data[file_type] = upload_result
     
-    return s3_urls
+    return s3_data
+

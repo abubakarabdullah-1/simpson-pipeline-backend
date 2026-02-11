@@ -25,7 +25,7 @@ def detect_drawing_views(page_image, use_sam3=True):
     """
     # Convert to numpy array for SAM3
     img_array = np.array(page_image)
-    
+
     # Try SAM3 automatic segmentation first
     if use_sam3:
         try:

@@ -29,3 +29,4 @@ ollama
 python-dotenv
 openpyxl
 gradio
+boto3
