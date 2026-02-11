@@ -1,5 +1,4 @@
-from fastapi import FastAPI, BackgroundTasks, UploadFile, File, HTTPException, Depends
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from typing import List, Dict
 import fitz  # PyMuPDF
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +10,8 @@ import shutil
 import json
 import traceback
 import asyncio
+import boto3
+from botocore.exceptions import ClientError as BotoClientError
 
 from dotenv import load_dotenv
 from pymongo import MongoClient
@@ -18,10 +19,9 @@ from pymongo import MongoClient
 from pipeline.runner import run_pipeline
 from pipeline.excel_exporter import create_excel_from_result
 from auth import get_current_user
-from s3_utils import upload_pipeline_outputs
+from s3_utils import upload_pipeline_outputs, get_s3_client
 
-
-
+# ... (omitted sections)
 # -----------------------------
 # Load ENV
 # -----------------------------
@@ -116,9 +116,9 @@ async def startup_recovery():
 
 async def monitor_timeouts():
     """Background task to check for timed-out pipelines with retry logic"""
-    timeout_minutes = 5  # timeout: 5 minutes (increased from 1 to handle longer processing)
+    timeout_minutes = 3  # timeout: 3 minutes (increased from 1 to handle longer processing)
     max_retries = 2  # Number of retry attempts before marking as FAILED
-    
+
     while True:
         await asyncio.sleep(60)  # Check every minute
         
@@ -479,29 +479,54 @@ def get_pipeline_status(run_id: str):
 
 
 # -----------------------------
-# Public File Download Endpoints
+# Public File Download Endpoints (S3 Streaming)
 # -----------------------------
+
+def stream_from_s3(s3_key: str, filename: str):
+    """Helper to stream file from S3 to client"""
+    try:
+        s3 = get_s3_client()
+        bucket = os.getenv("S3_BUCKET_NAME")
+        
+        # Get object from S3
+        obj = s3.get_object(Bucket=bucket, Key=s3_key)
+        
+        return StreamingResponse(
+            obj['Body'].iter_chunks(),
+            media_type=obj.get('ContentType', 'application/octet-stream'),
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except BotoClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchKey':
+            raise HTTPException(status_code=404, detail="File not found in S3")
+        print(f"S3 Streaming Error: {e}")
+        raise HTTPException(status_code=500, detail="Error retrieving file from storage")
+
+
 @app.get("/outputs/{filename}")
 def download_output(filename: str):
-    """Download output files (JSON, Excel, debug PDFs)"""
-    file_path = os.path.join(OUTPUT_DIR, filename)
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(file_path)
+    """Download output files (JSON, Excel, debug PDFs) from S3"""
+    # Extract run_id from filename (e.g. "abc-123.json" -> "abc-123")
+    # Handles: run_id.ext, run_id_debug.pdf
+    run_id = filename.split('.')[0].split('_')[0]
+    
+    s3_key = f"pipeline-outputs/{run_id}/{filename}"
+    return stream_from_s3(s3_key, filename)
 
 
 @app.get("/logs/{filename}")
 def download_log(filename: str):
-    """Download log files"""
-    file_path = os.path.join(LOGS_DIR, filename)
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(file_path)
+    """Download log files from S3"""
+    # Extract run_id from filename (e.g. "abc-123_logs.json" -> "abc-123")
+    run_id = filename.split('.')[0].split('_')[0]
+    
+    s3_key = f"pipeline-outputs/{run_id}/{filename}"
+    return stream_from_s3(s3_key, filename)
 
 
 @app.get("/error_logs/{filename}")
 def download_error_log(filename: str):
-    """Download error log files"""
+    """Download error log files (Local only)"""
     file_path = os.path.join(ERROR_DIR, filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
@@ -510,7 +535,7 @@ def download_error_log(filename: str):
 
 @app.get("/uploads/{filename}")
 def download_upload(filename: str):
-    """Download uploaded PDF files"""
+    """Download uploaded PDF files (Local only - usually deleted)"""
     file_path = os.path.join(UPLOAD_DIR, filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
