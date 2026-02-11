@@ -1,3 +1,4 @@
+from fastapi import FastAPI, BackgroundTasks, UploadFile, File, HTTPException, Depends
 from fastapi.responses import FileResponse, StreamingResponse
 from typing import List, Dict
 import fitz  # PyMuPDF
@@ -36,11 +37,17 @@ MONGO_URL = os.getenv("MONGO_URL")
 if not MONGO_URL:
     raise RuntimeError("MONGO_URL not set in .env file")
 
+import dns.resolver
+
+# Configure DNS resolver to use Google DNS - UNCOMMENT IF RUNNING ON EC2 AND DNS FAILS
+# dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
+# dns.resolver.default_resolver.nameservers = ['8.8.8.8', '8.8.4.4']
+
 client = MongoClient(
     MONGO_URL,
-    serverSelectionTimeoutMS=10000,  # 10 seconds timeout
-    connectTimeoutMS=10000,
-    socketTimeoutMS=10000,
+    serverSelectionTimeoutMS=30000,  # Increased timeout to 30s
+    connectTimeoutMS=30000,
+    socketTimeoutMS=30000,
     retryWrites=True,
     retryReads=True
 )
