@@ -130,13 +130,36 @@ async def monitor_timeouts():
                 "status": {"$in": ["RUNNING", "IN_PROGRESS"]},
                 "last_updated": {"$lt": timeout_threshold}
             },
-            {"run_id": 1, "retry_count": 1}  # Only fetch needed fields
+            {
+                "run_id": 1, 
+                "retry_count": 1, 
+                "started_at": 1, 
+                "last_updated": 1,
+                "pdf_file": 1
+            }
         )
         
         failed_count = 0
         for pipeline in timed_out_pipelines:
             run_id = pipeline["run_id"]
             retry_count = pipeline.get("retry_count", 0)
+            started_at = pipeline.get("started_at")
+            last_updated = pipeline.get("last_updated")
+            pdf_file = pipeline.get("pdf_file", "unknown")
+            
+            # Calculate elapsed time
+            if started_at:
+                elapsed = datetime.utcnow() - started_at
+                elapsed_str = f"{elapsed.total_seconds() / 60:.1f} minutes"
+            else:
+                elapsed_str = "unknown"
+            
+            # Calculate idle time (time since last update)
+            if last_updated:
+                idle_time = datetime.utcnow() - last_updated
+                idle_str = f"{idle_time.total_seconds() / 60:.1f} minutes"
+            else:
+                idle_str = "unknown"
             
             if retry_count < max_retries:
                 # Increment retry count and reset last_updated
@@ -147,23 +170,40 @@ async def monitor_timeouts():
                         "$inc": {"retry_count": 1}
                     }
                 )
-                print(f"⚠️ Pipeline {run_id} timed out - retry {retry_count + 1}/{max_retries}")
+                print(f"⚠️ Pipeline {run_id} timed out - retry {retry_count + 1}/{max_retries} (idle: {idle_str})")
             else:
-                # Max retries exceeded - mark as FAILED
+                # Max retries exceeded - mark as FAILED with detailed error
+                error_message = (
+                    f"Pipeline timed out after {max_retries} retry attempts. "
+                    f"Total runtime: {elapsed_str}, "
+                    f"idle time: {idle_str} (threshold: {timeout_minutes} min). "
+                    f"No activity detected since {last_updated.strftime('%Y-%m-%d %H:%M:%S UTC') if last_updated else 'unknown'}. "
+                    f"This usually indicates the pipeline crashed or hung during processing."
+                )
+                
                 runs_collection.update_one(
                     {"run_id": run_id},
                     {
                         "$set": {
                             "status": "FAILED",
-                            "error": f"Pipeline timed out after {max_retries} retry attempts",
-                            "failed_at": datetime.utcnow()
+                            "error": error_message,
+                            "failed_at": datetime.utcnow(),
+                            "timeout_details": {
+                                "elapsed_time": elapsed_str,
+                                "idle_time": idle_str,
+                                "timeout_threshold_minutes": timeout_minutes,
+                                "last_updated": last_updated.isoformat() if last_updated else None,
+                                "started_at": started_at.isoformat() if started_at else None,
+                            }
                         }
                     }
                 )
                 failed_count += 1
+                print(f"❌ Pipeline {run_id} FAILED: {error_message}")
         
         if failed_count > 0:
             print(f"❌ Marked {failed_count} pipelines as FAILED after {max_retries} retries")
+
 
 
 # -----------------------------
