@@ -116,7 +116,7 @@ async def startup_recovery():
 
 async def monitor_timeouts():
     """Background task to check for timed-out pipelines with retry logic"""
-    timeout_minutes = 1  # timeout: 1 minute
+    timeout_minutes = 5  # timeout: 5 minutes (increased from 1 to handle longer processing)
     max_retries = 2  # Number of retry attempts before marking as FAILED
     
     while True:
@@ -216,6 +216,7 @@ def stringify_keys(obj):
         return [stringify_keys(v) for v in obj]
     else:
         return obj
+
 
 
 # -----------------------------

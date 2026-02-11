@@ -36,6 +36,19 @@ def update_heartbeat(run_id: str):
         )
 
 
+def update_progress(run_id: str, phase: str, progress: int):
+    """
+    Print pipeline progress to console/logs
+    
+    Args:
+        run_id: Pipeline run ID
+        phase: Current phase name
+        progress: Progress percentage (0-100)
+    """
+    print(f"📊 [{run_id}] Progress: {progress}% - {phase}")
+
+
+
 # ==========================================
 # PIPELINE RUNNER — FINAL VERSION
 # ==========================================
@@ -76,6 +89,8 @@ def run_pipeline(pdf_path: str, run_id: str = None):
             phase1_debug.append(
                 (img, f"P{r['page']} {r['type']}")
             )
+    
+    update_progress(run_id, "Phase 1: PDF Processing Complete", 20)
 
     # -------------------------
     # PHASE 2
@@ -86,6 +101,8 @@ def run_pipeline(pdf_path: str, run_id: str = None):
             pdf_path,
             actionable_pages,
         )
+    
+    update_progress(run_id, "Phase 2: Element Detection Complete", 40)
 
     # -------------------------
     # PHASE 3
@@ -97,6 +114,8 @@ def run_pipeline(pdf_path: str, run_id: str = None):
             elevation_pages,
             project_specs,
         )
+    
+    update_progress(run_id, "Phase 3: Dimension Extraction Complete", 60)
 
     # -------------------------
     # PHASE 4
@@ -107,6 +126,8 @@ def run_pipeline(pdf_path: str, run_id: str = None):
             pdf_path,
             elevation_pages,
         )
+    
+    update_progress(run_id, "Phase 4: Scale Analysis Complete", 80)
 
     # -------------------------
     # PHASE 5
@@ -119,6 +140,8 @@ def run_pipeline(pdf_path: str, run_id: str = None):
             scale_data,
             project_specs,
         )
+    
+    update_progress(run_id, "Phase 5: Output Generation Complete", 100)
 
     log("Pipeline finished")
 
