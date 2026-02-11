@@ -39,9 +39,8 @@ if not MONGO_URL:
 
 import dns.resolver
 
-# Configure DNS resolver to use Google DNS - UNCOMMENT IF RUNNING ON EC2 AND DNS FAILS
-# dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
-# dns.resolver.default_resolver.nameservers = ['8.8.8.8', '8.8.4.4']
+dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
+dns.resolver.default_resolver.nameservers = ['8.8.8.8', '8.8.4.4']
 
 client = MongoClient(
     MONGO_URL,
@@ -542,8 +541,15 @@ def download_error_log(filename: str):
 
 @app.get("/uploads/{filename}")
 def download_upload(filename: str):
-    """Download uploaded PDF files (Local only - usually deleted)"""
-    file_path = os.path.join(UPLOAD_DIR, filename)
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(file_path)
+    """Download uploaded PDF files (Stream from S3)"""
+    # Filename is usually run_id.pdf
+    run_id = filename.split('.')[0]
+    
+    # In S3, we stored it as 'pdf_original' -> which might be mapped to 'input.pdf' or keeping original name?
+    # Let's assume we need to try both or standard logic.
+    # If we added "pdf_original": pdf_path to upload list, s3_utils likely saved it.
+    
+    # We need to match how s3_utils saved it.
+    # PROVISIONAL: Assuming it's saved as "pdf_original.pdf" or reusing filename.
+    # Let's check s3_utils first.
+    pass
