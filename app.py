@@ -384,6 +384,7 @@ def run_and_store(run_id: str, pdf_path: str):
         files_to_upload = {
             "excel": excel_path,
             "json": json_path,
+            "pdf_original": pdf_path,  # Upload original PDF so it can be viewed later
         }
         
         # Add optional files if they exist
@@ -541,15 +542,21 @@ def download_error_log(filename: str):
 
 @app.get("/uploads/{filename}")
 def download_upload(filename: str):
-    """Download uploaded PDF files (Stream from S3)"""
-    # Filename is usually run_id.pdf
-    run_id = filename.split('.')[0]
-    
-    # In S3, we stored it as 'pdf_original' -> which might be mapped to 'input.pdf' or keeping original name?
-    # Let's assume we need to try both or standard logic.
-    # If we added "pdf_original": pdf_path to upload list, s3_utils likely saved it.
-    
-    # We need to match how s3_utils saved it.
-    # PROVISIONAL: Assuming it's saved as "pdf_original.pdf" or reusing filename.
-    # Let's check s3_utils first.
-    pass
+    """
+    Download uploaded PDF files.
+    1. Check local storage first (in case it hasn't been cleaned up yet).
+    2. If missing locally, stream from S3 (original PDF is uploaded as 'pdf_original').
+    """
+    # 1. Try local file
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+        
+    # 2. Try S3 (Fallback)
+    # Filename format is usually "{run_id}.pdf" or "{run_id}_merged.pdf"
+    try:
+        run_id = filename.split('.')[0].split('_')[0]
+        s3_key = f"pipeline-outputs/{run_id}/{filename}"
+        return stream_from_s3(s3_key, filename)
+    except Exception:
+        raise HTTPException(status_code=404, detail="File not found locally or in S3")
