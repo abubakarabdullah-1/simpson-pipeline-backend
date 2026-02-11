@@ -18,6 +18,8 @@ from pymongo import MongoClient
 from pipeline.runner import run_pipeline
 from pipeline.excel_exporter import create_excel_from_result
 from auth import get_current_user
+from s3_utils import upload_pipeline_outputs
+
 
 
 # -----------------------------
@@ -278,9 +280,6 @@ async def trigger_pipeline(
             "message": f"Merged {len(pdfs)} PDFs and started processing"
         }
 
-
-
-
 # -----------------------------
 # Worker
 # -----------------------------
@@ -307,6 +306,24 @@ def run_and_store(run_id: str, pdf_path: str):
             json.dump(result, f, indent=2)
 
         # ------------------
+        # Upload to S3
+        # ------------------
+        files_to_upload = {
+            "excel": excel_path,
+            "json": json_path,
+        }
+        
+        # Add optional files if they exist
+        if result.get("debug_pdf"):
+            files_to_upload["debug_pdf"] = result.get("debug_pdf")
+        
+        if result.get("log_file"):
+            files_to_upload["log_file"] = result.get("log_file")
+        
+        # Upload all files to S3
+        s3_urls = upload_pipeline_outputs(run_id, files_to_upload)
+
+        # ------------------
         # Mongo-safe payload
         # ------------------
         mongo_payload = {
@@ -318,6 +335,8 @@ def run_and_store(run_id: str, pdf_path: str):
             "log_file": result.get("log_file"),
             "ended_at": datetime.utcnow(),
             "confidence": result.get("confidence"),
+            # Add S3 URLs if uploaded successfully
+            "s3_urls": s3_urls if s3_urls else {},
         }
 
         safe_payload = stringify_keys(mongo_payload)
