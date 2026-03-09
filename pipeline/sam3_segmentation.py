@@ -6,12 +6,12 @@ automatic and prompt-based segmentation of building elevations.
 """
 
 import os
-import torch
 import numpy as np
 import cv2
 from PIL import Image
 from typing import Tuple, Optional, List
 import io
+from pipeline import USE_CUDA
 
 # ==========================================
 # CONFIGURATION
@@ -39,76 +39,89 @@ import json
 
 def roboflow_infer(image_array, prompts=["building", "elevation"]):
     """
-    Send inference request to Roboflow Docker container (optimized for speed).
+    Send inference request to Roboflow Docker container.
     """
     try:
-        # Downscale if too large (speed optimization)
-        h, w = image_array.shape[:2]
-        if max(h, w) > 1920:
-            scale = 1920 / max(h, w)
-            new_w, new_h = int(w * scale), int(h * scale)
-            image_array = cv2.resize(image_array, (new_w, new_h), interpolation=cv2.INTER_AREA)
-        
-        # Fast JPEG encoding with lower quality
-        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 60]
-        _, buffer = cv2.imencode('.jpg', cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR), encode_param)
-        img_str = base64.b64encode(buffer).decode("utf-8")
-        base64_img = f"data:image/jpeg;base64,{img_str}"
-        
+        # Convert numpy array to PIL Image for JPEG encoding
+        img_pil = Image.fromarray(image_array)
+        buffered = io.BytesIO()
+        img_pil.save(buffered, format="JPEG")
+        img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+
         # Prepare payload - handle list of prompts
         if isinstance(prompts, str):
             prompts = [prompts]
-            
+
         prompt_payload = [{"type": "text", "text": p} for p in prompts]
-        
+
         payload = {
-            "image": {"type": "base64", "value": base64_img},
+            "image": {"type": "base64", "value": img_base64},
             "model_id": ROBOFLOW_MODEL_ID,
             "prompts": prompt_payload,
-            "confidence": 0.10,      # Lower threshold to catch more
-            "iou_threshold": 0.10    # Lower IoU threshold
         }
-        
+
         url = f"{ROBOFLOW_API_URL}/sam3/concept_segment?api_key={ROBOFLOW_API_KEY}"
         print(f"[Roboflow] Sending request to {ROBOFLOW_API_URL}...")
-        
-        headers = {
-            "Content-Type": "application/json"
-        }
-        
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
-        
-        if response.status_code == 200:
-            result = response.json()
-            masks = []
-            
-            # Parsing logic based on user's working snippet
-            # Structure: result -> prompt_results -> predictions -> masks (polygons)
-            try:
-                prompt_results = result.get('prompt_results', [])
-                
-                for p_result in prompt_results:
-                    # Get the prompt text for this group of predictions
+
+        response = requests.post(url, json=payload, timeout=30)
+        response.raise_for_status()
+
+        result = response.json()
+        masks = []
+
+        try:
+            # Account for different Roboflow response structures
+            predictions = []
+            if "prompt_results" in result:
+                for pr in result["prompt_results"]:
                     current_prompt = "Result"
-                    if 'prompt' in p_result and 'text' in p_result['prompt']:
-                        current_prompt = p_result['prompt']['text'].capitalize()
-                    
-                    predictions = p_result.get('predictions', [])
-                    
-                    for pred in predictions:
-                        # 'masks' contains list of polygons (contours)
-                        contours = pred.get('masks', [])
-                        
-                        for contour in contours:
-                            pts = np.array(contour, dtype=np.int32)
-                            
-                            # Create binary mask
+                    if 'prompt' in pr and 'text' in pr['prompt']:
+                        current_prompt = pr['prompt']['text'].capitalize()
+
+                    for pred in pr.get("predictions", []):
+                        pred['_prompt'] = current_prompt
+                        predictions.append(pred)
+            elif "predictions" in result:
+                predictions = result["predictions"]
+
+            for pred in predictions:
+                current_prompt = pred.pop('_prompt', 'Result')
+
+                # Handle "points" field: list of {"x": ..., "y": ...} dicts
+                if "points" in pred:
+                    pts = np.array([[p["x"], p["y"]] for p in pred["points"]], np.int32)
+
+                    mask = np.zeros(image_array.shape[:2], dtype=np.uint8)
+                    cv2.fillPoly(mask, [pts], 255)
+
+                    area = cv2.contourArea(pts)
+                    x, y, w, h = cv2.boundingRect(pts)
+
+                    masks.append({
+                        'segmentation': mask > 0,
+                        'area': area,
+                        'bbox': [x, y, w, h],
+                        'predicted_iou': pred.get('confidence', 1.0),
+                        'stability_score': pred.get('confidence', 1.0),
+                        'class_name': current_prompt
+                    })
+
+                # Handle "masks" field: list of polygon contours
+                if "masks" in pred:
+                    for contour in pred["masks"]:
+                        if isinstance(contour, list) and len(contour) > 0:
+                            # Determine format: list of {"x","y"} dicts or raw coordinate arrays
+                            if isinstance(contour[0], dict):
+                                pts = np.array([[p["x"], p["y"]] for p in contour], np.int32)
+                            else:
+                                pts = np.array(contour, dtype=np.int32)
+
                             mask = np.zeros(image_array.shape[:2], dtype=np.uint8)
                             cv2.fillPoly(mask, [pts], 255)
-                            
+
                             area = cv2.contourArea(pts)
                             x, y, w, h = cv2.boundingRect(pts)
-                            
+
                             masks.append({
                                 'segmentation': mask > 0,
                                 'area': area,
@@ -117,19 +130,18 @@ def roboflow_infer(image_array, prompts=["building", "elevation"]):
                                 'stability_score': pred.get('confidence', 1.0),
                                 'class_name': current_prompt
                             })
-                            
-                print(f"[Roboflow] Success! Detected {len(masks)} objects")
-                return masks
-                
-            except Exception as e:
-                print(f"[Roboflow] Error parsing response: {e}")
-                print(f"[Roboflow] Raw result: {json.dumps(result)}")
-                return None
 
-        else:
-            print(f"[Roboflow] Error {response.status_code}: {response.text}")
+            print(f"[Roboflow] Success! Detected {len(masks)} objects")
+            return masks
+
+        except Exception as e:
+            print(f"[Roboflow] Error parsing response: {e}")
+            print(f"[Roboflow] Raw result: {json.dumps(result)}")
             return None
-            
+
+    except requests.exceptions.HTTPError as e:
+        print(f"[Roboflow] HTTP Error: {e}")
+        return None
     except Exception as e:
         print(f"[Roboflow] Connection error: {e}")
         return None
@@ -186,7 +198,15 @@ def segment_building_with_box(image, box):
 def segment_building_opencv_fallback(gray_image: np.ndarray, dilation_px=50) -> Tuple[np.ndarray, tuple]:
     _, binary = cv2.threshold(gray_image, 240, 255, cv2.THRESH_BINARY_INV)
     kernel = np.ones((5, 5), np.uint8)
-    closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+
+    if USE_CUDA:
+        gpu_src = cv2.cuda_GpuMat()
+        gpu_src.upload(binary)
+        morph_filter = cv2.cuda.createMorphologyFilter(cv2.MORPH_CLOSE, cv2.CV_8U, kernel)
+        closed = morph_filter.apply(gpu_src).download()
+    else:
+        closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+
     contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     mask = np.zeros_like(gray_image)
@@ -199,8 +219,14 @@ def segment_building_opencv_fallback(gray_image: np.ndarray, dilation_px=50) -> 
             cv2.drawContours(mask, [cnt], -1, 255, -1)
             
     if dilation_px > 0:
-        kernel = np.ones((dilation_px, dilation_px), np.uint8)
-        mask = cv2.dilate(mask, kernel, iterations=1)
+        dil_kernel = np.ones((dilation_px, dilation_px), np.uint8)
+        if USE_CUDA:
+            gpu_mask = cv2.cuda_GpuMat()
+            gpu_mask.upload(mask)
+            dil_filter = cv2.cuda.createMorphologyFilter(cv2.MORPH_DILATE, cv2.CV_8U, dil_kernel)
+            mask = dil_filter.apply(gpu_mask).download()
+        else:
+            mask = cv2.dilate(mask, dil_kernel, iterations=1)
         
     return mask, (gray_image.shape[1], gray_image.shape[0])
 
@@ -221,8 +247,14 @@ def generate_building_mask(image: np.ndarray, use_sam3=True, dilation_px=50) -> 
         mask, _ = segment_building_automatic(rgb_image)
         if mask is not None:
             if dilation_px > 0:
-                kernel = np.ones((dilation_px, dilation_px), np.uint8)
-                mask = cv2.dilate(mask, kernel, iterations=1)
+                dil_kernel = np.ones((dilation_px, dilation_px), np.uint8)
+                if USE_CUDA:
+                    gpu_mask = cv2.cuda_GpuMat()
+                    gpu_mask.upload(mask)
+                    dil_filter = cv2.cuda.createMorphologyFilter(cv2.MORPH_DILATE, cv2.CV_8U, dil_kernel)
+                    mask = dil_filter.apply(gpu_mask).download()
+                else:
+                    mask = cv2.dilate(mask, dil_kernel, iterations=1)
             return mask, (mask.shape[1], mask.shape[0])
             
     # Fallback to OpenCV

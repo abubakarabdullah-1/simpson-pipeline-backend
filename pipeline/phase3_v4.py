@@ -6,6 +6,7 @@ import re
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw
+from pipeline import USE_CUDA
 
 MODEL_NAME = "qwen3-vl:30b-a3b-instruct"
 
@@ -146,7 +147,15 @@ def generate_building_mask(page, crop_rect, dilation_px=50):
 
     _, binary = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY_INV)
     kernel = np.ones((5,5), np.uint8)
-    closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+
+    if USE_CUDA:
+        gpu_src = cv2.cuda_GpuMat()
+        gpu_src.upload(binary)
+        morph_filter = cv2.cuda.createMorphologyFilter(cv2.MORPH_CLOSE, cv2.CV_8U, kernel)
+        closed = morph_filter.apply(gpu_src).download()
+    else:
+        closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+
     contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     mask = np.zeros_like(gray)
@@ -160,7 +169,13 @@ def generate_building_mask(page, crop_rect, dilation_px=50):
 
     if dilation_px > 0:
         kernel_dil = np.ones((dilation_px, dilation_px), np.uint8)
-        mask = cv2.dilate(mask, kernel_dil, iterations=1)
+        if USE_CUDA:
+            gpu_mask = cv2.cuda_GpuMat()
+            gpu_mask.upload(mask)
+            dil_filter = cv2.cuda.createMorphologyFilter(cv2.MORPH_DILATE, cv2.CV_8U, kernel_dil)
+            mask = dil_filter.apply(gpu_mask).download()
+        else:
+            mask = cv2.dilate(mask, kernel_dil, iterations=1)
 
     return mask, (pix.width, pix.height)
 

@@ -214,3 +214,11 @@ cron.log
 __pycache__/
 *.pyc
 .env
+.env.sh
+
+# Outputs
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.json
