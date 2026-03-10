@@ -114,15 +114,10 @@ def run_pipeline(pdf_path: str, run_id: str = None):
             if p["type"] == "Exterior_Elevation"
         ]
 
-        # ---- collect Phase-1 thumbs ----
+        # Phase 1 thumbnails are just re-renders of original pages with
+        # a colored border — not real pipeline output.  Original pages are
+        # already saved as page_N.pdf, so skip phase1 debug images.
         phase1_debug = []
-
-        for r in actionable_pages:
-            img = r.get("thumb")
-            if img:
-                phase1_debug.append(
-                    (img, f"P{r['page']} {r['type']}")
-                )
 
         update_progress(run_id, "Phase 1: PDF Processing Complete", 20)
 
@@ -184,8 +179,6 @@ def run_pipeline(pdf_path: str, run_id: str = None):
         validator_scores = []
 
         for phase_debug in [
-            phase1_debug,
-            phase2_debug,
             phase3_debug,
             phase4_debug,
             phase5_debug,
@@ -218,10 +211,14 @@ def run_pipeline(pdf_path: str, run_id: str = None):
         # DEBUG PDF
         # -------------------------
 
+        # Phase 2 debug images are unmodified re-renders of original
+        # pages — no annotations.  Skip them as originals are already saved.
+        # Only pass phases that produce genuinely new images:
+        #   Phase 3: blue view-boxes + green tag-word boxes
+        #   Phase 4: cropped dimension lines with blue highlight
+        #   Phase 5: grayscale crop with green contour mask
         debug_pdf = collect_and_write_debug_pdf(
             [
-                phase1_debug,
-                phase2_debug,
                 phase3_debug,
                 phase4_debug,
                 phase5_debug,
@@ -229,6 +226,8 @@ def run_pipeline(pdf_path: str, run_id: str = None):
             output_dir="outputs",
             global_confidence=confidence,
             run_id=run_id,
+            pdf_path=pdf_path,
+            phase_start_index=3,
         )
 
         # -------------------------

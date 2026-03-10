@@ -202,7 +202,11 @@ def upload_pipeline_outputs(run_id: str, files_dict: dict, cleanup_local: bool =
     for file_type, local_path in files_dict.items():
         if local_path and os.path.exists(local_path):
             filename = os.path.basename(local_path)
-            s3_key = f"pipeline-outputs/{run_id}/{filename}"
+            # debug_pdf/* keys go into a pdf/ subfolder in S3
+            if file_type.startswith("debug_pdf/"):
+                s3_key = f"pipeline-outputs/{run_id}/pdf/{filename}"
+            else:
+                s3_key = f"pipeline-outputs/{run_id}/{filename}"
             upload_tasks.append((file_type, local_path, s3_key))
     
     if not upload_tasks:

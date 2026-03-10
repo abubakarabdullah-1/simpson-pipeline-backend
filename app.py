@@ -597,36 +597,60 @@ def run_and_store(run_id: str, pdf_path: str):
                      reveal_result.get("status") == "FAILED")
 
         # ------------------
-        # Split Debug PDF into individual pages
+        # Debug PDFs are now saved as individual files by the collector
+        # (e.g. phase1_page_10a.pdf, fascia_page_22b.pdf) directly
+        # into outputs/<run_id>/pdf/  — no splitting needed.
         # ------------------
-        debug_pdf_path = result.get("debug_pdf")
-        debug_pdf_dir = None
-        if debug_pdf_path and os.path.exists(debug_pdf_path):
-            try:
-                import fitz
-                debug_pdf_dir = os.path.join(OUTPUT_DIR, run_id, "pdf")
-                os.makedirs(debug_pdf_dir, exist_ok=True)
-                
-                doc = fitz.open(debug_pdf_path)
-                for i in range(len(doc)):
-                    page_pdf_path = os.path.join(debug_pdf_dir, f"{run_id}_page_{i+1}.pdf")
-                    # Create a new empty PDF for this single page
-                    new_doc = fitz.open()
-                    new_doc.insert_pdf(doc, from_page=i, to_page=i)
-                    new_doc.save(page_pdf_path)
-                    new_doc.close()
-                doc.close()
-                print(f"[DEBUG-PDF] Split {len(doc)} pages into {debug_pdf_dir}")
-            except Exception as e:
-                print(f"⚠️ Failed to split debug PDF: {e}")
+        debug_pdf_dir = result.get("debug_pdf")  # collector now returns the directory path
+
+        # Build a sorted array of debug PDF filenames for the frontend
+        import re as _re
+
+        def _sort_key(fname):
+            """Sort by: page number -> original first -> phase order -> sub-letter.
+            
+            Result grouping per page:
+                page_10.pdf              (original)
+                phase1_page_10a.pdf      (phase outputs)
+                phase3_page_10a.pdf
+                fascia_page_10a.pdf
+                page_11.pdf              (next original)
+                ...
+            """
+            phase_order = {
+                "phase1": 1, "phase2": 2, "phase3": 3,
+                "phase4": 4, "phase5": 5, "fascia": 6, "reveal": 7,
+            }
+            # Original page: page_N.pdf
+            m_orig = _re.match(r'^page_(\d+)\.pdf$', fname)
+            if m_orig:
+                page = int(m_orig.group(1))
+                return (page, 0, "", "")  # 0 = original comes first
+            # Phase output: phase1_page_10a.pdf / fascia_page_22b.pdf
+            m = _re.match(r'^(phase\d|fascia|reveal)_page_(\d+)([a-z])\.pdf$', fname)
+            if m:
+                phase = m.group(1)
+                page = int(m.group(2))
+                sub = m.group(3)
+                return (page, phase_order.get(phase, 99), phase, sub)
+            return (99999, 100, "", fname)
+
+        debug_pdf_pages = []
+        if debug_pdf_dir and os.path.isdir(debug_pdf_dir):
+            debug_pdf_pages = sorted(
+                [f for f in os.listdir(debug_pdf_dir) if f.endswith(".pdf")],
+                key=_sort_key,
+            )
+            print(f"[DEBUG-PDF] {len(debug_pdf_pages)} debug PDFs indexed for MongoDB")
 
         mongo_payload = {
             "status": "FAILED" if all_failed else "COMPLETED",
             "result": result,
             "result_file": json_path,
             "excel_file": excel_path,
-            "debug_pdf": debug_pdf_path,
+            "debug_pdf": None,
             "debug_pdf_dir": debug_pdf_dir,
+            "debug_pdf_pages": debug_pdf_pages,
             "log_file": result.get("log_file"),
             "ended_at": datetime.utcnow(),
             "confidence": result.get("confidence"),
@@ -652,26 +676,39 @@ def run_and_store(run_id: str, pdf_path: str):
         }
         
         # Add optional files if they exist
-        if result.get("debug_pdf"):
-            files_to_upload["debug_pdf"] = result.get("debug_pdf")
-        
         if result.get("log_file"):
             files_to_upload["log_file"] = result.get("log_file")
             
-        # NOTE: Fascia/Reveal annotated pages are now embedded directly into the debug PDF.
-        # No separate annotated PDF files are generated.
+        # Add all individual debug PDFs from the pdf directory
+        if debug_pdf_dir and os.path.isdir(debug_pdf_dir):
+            for pdf_name in debug_pdf_pages:
+                pdf_full_path = os.path.join(debug_pdf_dir, pdf_name)
+                if os.path.exists(pdf_full_path):
+                    # Key format: "debug_pdf/<filename>" so S3 key becomes
+                    # pipeline-outputs/<run_id>/pdf/<filename>
+                    files_to_upload[f"debug_pdf/{pdf_name}"] = pdf_full_path
 
         # Upload all files to S3 in parallel
         try:
             s3_data = upload_pipeline_outputs(run_id, files_to_upload, cleanup_local=True)
 
+            # Build debug_pdf_pages with S3 URLs for frontend access
+            debug_pdf_pages_s3 = []
+            for pdf_name in debug_pdf_pages:
+                s3_url = s3_data.get(f"debug_pdf/{pdf_name}")
+                debug_pdf_pages_s3.append({
+                    "filename": pdf_name,
+                    "s3_url": s3_url,
+                })
+
             # Update MongoDB with S3 URLs after successful upload
             runs_collection.update_one(
                 {"run_id": run_id},
                 {"$set": {
-                    "result": stringify_keys(result), # Updated result with S3 URLs
+                    "result": stringify_keys(result),
                     "s3_data": stringify_keys(s3_data),
-                    "s3_upload_status": "COMPLETED"
+                    "s3_upload_status": "COMPLETED",
+                    "debug_pdf_pages": debug_pdf_pages_s3,
                 }},
             )
             
@@ -682,6 +719,15 @@ def run_and_store(run_id: str, pdf_path: str):
                     print(f"🗑️  Deleted uploaded PDF: {pdf_path}")
             except Exception as cleanup_exc:
                 print(f"⚠️ Could not delete uploaded PDF {pdf_path}: {cleanup_exc}")
+
+            # Clean up local debug pdf directory after S3 upload
+            if debug_pdf_dir and os.path.isdir(debug_pdf_dir):
+                try:
+                    import shutil
+                    shutil.rmtree(debug_pdf_dir)
+                    print(f"🗑️  Deleted local debug PDF dir: {debug_pdf_dir}")
+                except Exception as cleanup_exc:
+                    print(f"⚠️ Could not delete debug PDF dir {debug_pdf_dir}: {cleanup_exc}")
                 
         except Exception as s3_exc:
             # S3 upload failed, but pipeline itself succeeded
@@ -840,3 +886,26 @@ def download_upload(filename: str):
         return stream_from_s3(s3_key, filename)
     except Exception:
         raise HTTPException(status_code=404, detail="File not found locally or in S3")
+
+
+@app.get("/debug-pdf/{run_id}/{filename}")
+def download_debug_pdf(run_id: str, filename: str):
+    """
+    Download an individual debug PDF page from the pdf directory.
+    e.g. /debug-pdf/<run_id>/phase1_page_10a.pdf
+    
+    1. Check local storage first.
+    2. If missing locally, stream from S3.
+    """
+    # Only allow .pdf files to prevent path traversal
+    if not filename.endswith(".pdf") or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    # 1. Try local file
+    file_path = os.path.join(OUTPUT_DIR, run_id, "pdf", filename)
+    if os.path.exists(file_path):
+        return FileResponse(file_path, media_type="application/pdf")
+
+    # 2. Fallback to S3
+    s3_key = f"pipeline-outputs/{run_id}/pdf/{filename}"
+    return stream_from_s3(s3_key, filename)

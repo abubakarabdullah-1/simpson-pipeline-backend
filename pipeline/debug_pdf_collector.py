@@ -10,14 +10,16 @@ except Exception:
 
 
 # ============================================================
-# DEBUG PDF COLLECTOR — VALIDATOR DRIVEN
+# DEBUG PDF COLLECTOR — INDIVIDUAL PAGE PDFs
 # ============================================================
-# - Combines debug images from any subset of phases
-# - Skips None / empty / broken entries
-# - Overlays validator confidence on EVERY page
-# - Appends annotated Fascia/Reveal pages with sub-page labels
+# - Saves each debug image as a separate single-page PDF
+# - Named by phase + original page number:
+#     phase1_page_10a.pdf, phase2_page_5a.pdf,
+#     fascia_page_22a.pdf, reveal_page_15b.pdf
+# - Sub-letter (a, b, c…) tracks multiple outputs per page per phase
+# - Overlays validator confidence on every page
+# - Labels Fascia/Reveal pages with banner text
 # - Never crashes pipeline
-# - Returns pdf path or None
 # ============================================================
 
 
@@ -110,6 +112,11 @@ def _draw_page_label(img, label: str):
         pass
 
 
+def _save_single_page_pdf(img, filepath: str):
+    """Save a single PIL image as a one-page PDF."""
+    img.save(filepath, "PDF", resolution=150.0)
+
+
 # ============================================================
 
 
@@ -121,17 +128,25 @@ def collect_and_write_debug_pdf(
     per_image_confidence: Optional[Dict[str, float]] = None,
     run_id: Optional[str] = None,
     annotated_entries: Optional[List[Dict]] = None,
+    pdf_path: Optional[str] = None,
+    phase_start_index: int = 1,
 ):
     """
-    Returns:
-        str  -> pdf path
-        None -> nothing generated
+    Saves original PDF pages and each debug image as individual
+    single-page PDFs in ``<output_dir>/<run_id>/pdf/``.
 
-    annotated_entries: list of dicts with keys:
-        page_idx  (int)  — 0-based page number in the source PDF
-        img_path  (str)  — path to the annotated image file
-        source    (str)  — "Fascia" or "Reveal"
-        sub_idx   (int)  — 0-based occurrence index on that page (0→a, 1→b …)
+    Naming convention::
+
+        page_1.pdf            — Original page 1 from uploaded PDF
+        page_2.pdf            — Original page 2 from uploaded PDF
+        phase1_page_10a.pdf   — Phase 1 output for page 10, first occurrence
+        phase2_page_5b.pdf    — Phase 2 output for page 5, second occurrence
+        fascia_page_22a.pdf   — Fascia output for page 22, first occurrence
+        reveal_page_15b.pdf   — Reveal output for page 15, second occurrence
+
+    Returns:
+        str  -> pdf directory path
+        None -> nothing generated
     """
 
     print("[DEBUG-PDF] Collector started")
@@ -141,13 +156,43 @@ def collect_and_write_debug_pdf(
             print("[DEBUG-PDF] PIL not available — skipping")
             return None
 
-        images: List[Image.Image] = []
+        if not run_id:
+            run_id = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
 
-        for phase_idx, debug_list in enumerate(phase_debug_sets, start=1):
+        pdf_dir = os.path.join(output_dir, run_id, "pdf")
+        os.makedirs(pdf_dir, exist_ok=True)
+
+        saved_files = []
+
+        # ── Save every original page from the uploaded PDF ─────────────────
+        if pdf_path and os.path.exists(pdf_path):
+            try:
+                import fitz  # PyMuPDF
+                src_doc = fitz.open(pdf_path)
+                for i in range(len(src_doc)):
+                    page_filename = "page_{0}.pdf".format(i + 1)
+                    page_filepath = os.path.join(pdf_dir, page_filename)
+                    single = fitz.open()
+                    single.insert_pdf(src_doc, from_page=i, to_page=i)
+                    single.save(page_filepath)
+                    single.close()
+                    saved_files.append(page_filepath)
+                print("[DEBUG-PDF] Saved {0} original pages".format(len(src_doc)))
+                src_doc.close()
+            except Exception as exc:
+                print("[DEBUG-PDF] Could not save original pages: {0}".format(exc))
+
+        # Track sub-occurrences: (phase_name, page_num) -> next sub-index
+        phase_page_counter = {}
+
+        # ── Phase debug images (only phases with real output) ──────────────
+        for phase_idx, debug_list in enumerate(phase_debug_sets, start=phase_start_index):
 
             if not debug_list:
                 print("[DEBUG-PDF] Phase {0}: no output".format(phase_idx))
                 continue
+
+            phase_name = "phase{0}".format(phase_idx)
 
             for entry_idx, entry in enumerate(debug_list):
 
@@ -160,29 +205,49 @@ def collect_and_write_debug_pdf(
 
                     if img is None or not hasattr(img, "save"):
                         continue
-                    
-                    # Remove page number prefix (e.g., "P1 ", "P2 ") from label
+
+                    # Extract page number from label  (e.g. "P10 Schedule Table" -> 10)
+                    page_num = None
                     if label:
-                        label = re.sub(r'^P\d+\s+', '', label)
+                        match = re.match(r'^P(\d+)\s', label)
+                        if match:
+                            page_num = int(match.group(1))
 
+                    if page_num is None:
+                        page_num = entry_idx + 1  # fallback
+
+                    # Clean label — remove the P{N} prefix for overlay text
+                    clean_label = label
+                    if label:
+                        clean_label = re.sub(r'^P\d+\s+', '', label)
+
+                    # Confidence
                     conf = None
-
                     if per_image_confidence and label:
                         conf = per_image_confidence.get(label)
-
                     if conf is None:
                         conf = global_confidence
 
-                    # Preserve original image - create a copy to avoid modifying original
+                    # Prepare image copy
                     if img.mode != "RGB":
                         img = img.convert("RGB")
-                    
-                    # Create copy to preserve original quality
                     img_copy = img.copy()
 
-                    _draw_confidence_overlay(img_copy, conf, label)
+                    _draw_confidence_overlay(img_copy, conf, clean_label)
 
-                    images.append(img_copy)
+                    # Sub-letter (a, b, c…) for multiple outputs on the same page
+                    key = (phase_name, page_num)
+                    sub_idx = phase_page_counter.get(key, 0)
+                    phase_page_counter[key] = sub_idx + 1
+                    sub_letter = chr(ord("a") + sub_idx)
+
+                    # Save as individual PDF
+                    filename = "{0}_page_{1}{2}.pdf".format(phase_name, page_num, sub_letter)
+                    filepath = os.path.join(pdf_dir, filename)
+
+                    _save_single_page_pdf(img_copy, filepath)
+                    saved_files.append(filepath)
+                    print("[DEBUG-PDF] Saved: {0}".format(filename))
 
                 except Exception as exc:
                     print(
@@ -193,67 +258,75 @@ def collect_and_write_debug_pdf(
 
         # ── Annotated Fascia / Reveal pages ────────────────────────────────
         if annotated_entries:
-            # Sort: by source page index, then sub_idx, then source name
-            sorted_entries = sorted(
-                annotated_entries,
-                key=lambda e: (e.get("page_idx", 0), e.get("sub_idx", 0), e.get("source", "")),
-            )
+            _save_annotated_entries(annotated_entries, pdf_dir, saved_files)
 
-            for entry in sorted_entries:
-                try:
-                    img_path = entry.get("img_path", "")
-                    if not img_path or not os.path.exists(img_path):
-                        continue
-
-                    # page_idx is 0-based; humans read pages starting from 1
-                    human_page = entry.get("page_idx", 0) + 1
-                    sub_letter = chr(ord("a") + entry.get("sub_idx", 0))
-                    source = entry.get("source", "Annotated")
-                    banner = f"{source} — Page {human_page}{sub_letter}"
-
-                    with Image.open(img_path) as ann_img:
-                        if ann_img.mode != "RGB":
-                            ann_img = ann_img.convert("RGB")
-                        ann_copy = ann_img.copy()
-
-                    _draw_page_label(ann_copy, banner)
-                    images.append(ann_copy)
-                    print(f"[DEBUG-PDF] Appended annotated page: {banner}")
-
-                except Exception as exc:
-                    print(f"[DEBUG-PDF] Annotated entry skipped: {exc}")
-
-        if not images:
-            print("[DEBUG-PDF] No debug images collected")
+        if not saved_files:
+            print("[DEBUG-PDF] No debug images saved")
             return None
 
-        os.makedirs(output_dir, exist_ok=True)
-
-        if not run_id:
-            run_id = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-
-        pdf_path = os.path.join(output_dir, "{0}_debug.pdf".format(run_id))
-
-        first, rest = images[0], images[1:]
-
-        first.save(
-            pdf_path,
-            save_all=True,
-            append_images=rest,
-            resolution=150.0,  # Preserve quality
-        )
-
-        print(
-            "[DEBUG-PDF] PDF created: {0} ({1} pages)".format(
-                pdf_path, len(images)
-            )
-        )
-
-        return pdf_path
+        print("[DEBUG-PDF] Saved {0} individual PDFs to {1}".format(len(saved_files), pdf_dir))
+        return pdf_dir
 
     except Exception as exc:
         print("[DEBUG-PDF] Fatal suppressed: {0}".format(exc))
         return None
+
+
+def _save_annotated_entries(
+    annotated_entries: List[Dict],
+    pdf_dir: str,
+    saved_files: List[str],
+):
+    """
+    Save Fascia/Reveal annotated images as individual PDFs into *pdf_dir*.
+
+    Checks existing files in the directory so sub-letters continue correctly
+    when Fascia and Reveal finish at different times.
+    """
+    sorted_entries = sorted(
+        annotated_entries,
+        key=lambda e: (e.get("page_idx", 0), e.get("sub_idx", 0), e.get("source", "")),
+    )
+
+    # Scan existing files to pick up where we left off with sub-letters
+    source_page_counter = {}
+    for fname in os.listdir(pdf_dir):
+        m = re.match(r'^(fascia|reveal)_page_(\d+)([a-z])\.pdf$', fname)
+        if m:
+            src = m.group(1)
+            pg = int(m.group(2))
+            letter_val = ord(m.group(3)) - ord("a") + 1
+            key = (src, pg)
+            source_page_counter[key] = max(source_page_counter.get(key, 0), letter_val)
+
+    for entry in sorted_entries:
+        try:
+            img_path = entry.get("img_path", "")
+            if not img_path or not os.path.exists(img_path):
+                continue
+
+            human_page = entry.get("page_idx", 0) + 1
+            source = entry.get("source", "Annotated").lower()
+
+            key = (source, human_page)
+            sub_idx = source_page_counter.get(key, 0)
+            source_page_counter[key] = sub_idx + 1
+            sub_letter = chr(ord("a") + sub_idx)
+
+            with Image.open(img_path) as ann_img:
+                if ann_img.mode != "RGB":
+                    ann_img = ann_img.convert("RGB")
+                ann_copy = ann_img.copy()
+
+            filename = "{0}_page_{1}{2}.pdf".format(source, human_page, sub_letter)
+            filepath = os.path.join(pdf_dir, filename)
+
+            _save_single_page_pdf(ann_copy, filepath)
+            saved_files.append(filepath)
+            print("[DEBUG-PDF] Saved annotated: {0}".format(filename))
+
+        except Exception as exc:
+            print("[DEBUG-PDF] Annotated entry skipped: {0}".format(exc))
 
 
 def append_annotated_to_debug_pdf(
@@ -263,159 +336,38 @@ def append_annotated_to_debug_pdf(
     run_id: Optional[str] = None,
 ) -> Optional[str]:
     """
-    Appends labelled Fascia/Reveal annotated images to an existing debug PDF.
-    Uses fitz (PyMuPDF) to merge so the existing pages are preserved.
+    Saves Fascia/Reveal annotated images as individual PDFs in the
+    ``<output_dir>/<run_id>/pdf/`` directory.
 
-    annotated_entries: list of dicts with keys:
-        page_idx  (int)  — 0-based page number in the source PDF
-        img_path  (str)  — path to the annotated image file
-        source    (str)  — "Fascia" or "Reveal"
-        sub_idx   (int)  — 0-based occurrence index on that page (0→a, 1→b …)
+    This replaces the old behaviour of appending to a single combined
+    debug PDF.  The function signature is kept for backward-compatible
+    call-sites in app.py.
 
-    Returns the (possibly updated) pdf path, or existing_pdf_path unchanged on failure.
+    Returns the pdf directory path, or *existing_pdf_path* on failure.
     """
     if not annotated_entries:
         return existing_pdf_path
 
     if Image is None:
-        print("[DEBUG-PDF] PIL not available — cannot append annotated pages")
+        print("[DEBUG-PDF] PIL not available — cannot save annotated pages")
         return existing_pdf_path
 
     try:
-        import fitz  # PyMuPDF
-    except ImportError:
-        print("[DEBUG-PDF] fitz not available — cannot merge PDFs")
-        return existing_pdf_path
-
-    try:
-        # ── Build new annotated pages (PIL images with banner label) ──────────
-        sorted_entries = sorted(
-            annotated_entries,
-            key=lambda e: (e.get("page_idx", 0), e.get("sub_idx", 0), e.get("source", "")),
-        )
-
-        new_images: List[Image.Image] = []
-        # Keep track of which new image belongs to which original page index
-        img_to_page_idx = []
-        for entry in sorted_entries:
-            try:
-                img_path = entry.get("img_path", "")
-                if not img_path or not os.path.exists(img_path):
-                    continue
-
-                human_page = entry.get("page_idx", 0) + 1
-                sub_letter = chr(ord("a") + entry.get("sub_idx", 0))
-                source = entry.get("source", "Annotated")
-                banner = f"{source} — Page {human_page}{sub_letter}"
-
-                with Image.open(img_path) as ann_img:
-                    if ann_img.mode != "RGB":
-                        ann_img = ann_img.convert("RGB")
-                    ann_copy = ann_img.copy()
-
-                _draw_page_label(ann_copy, banner)
-                new_images.append(ann_copy)
-                img_to_page_idx.append(entry.get("page_idx", 0))
-                print(f"[DEBUG-PDF] Appended annotated page: {banner}")
-
-            except Exception as exc:
-                print(f"[DEBUG-PDF] Annotated entry skipped: {exc}")
-
-        if not new_images:
-            return existing_pdf_path
-
-        # ── Save new annotated images to a temporary PIL PDF ─────────────────
-        import tempfile
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-            tmp_ann_pdf = tmp.name
-
-        first_ann, rest_ann = new_images[0], new_images[1:]
-        first_ann.save(
-            tmp_ann_pdf,
-            save_all=True,
-            append_images=rest_ann,
-            resolution=150.0,
-        )
-
-        # ── Merge: existing debug PDF + new annotated PDF via fitz ───────────
-        os.makedirs(output_dir, exist_ok=True)
         if not run_id:
             run_id = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
 
-        pdf_path = os.path.join(output_dir, f"{run_id}_debug.pdf")
+        pdf_dir = os.path.join(output_dir, run_id, "pdf")
+        os.makedirs(pdf_dir, exist_ok=True)
 
-        merged = fitz.open()
+        saved_files = []
+        _save_annotated_entries(annotated_entries, pdf_dir, saved_files)
 
-        # How many original pages are there? 
-        # The base PDF starts with Phase 1 overview pages (one for each original page).
-        # We assume the first N pages in existing_pdf_path correspond to the N original pages.
-        # This is true because collect_and_write_debug_pdf writes Phase 1 first.
-        
-        # We need a robust insertion logic.
-        # Phase 1 overview page for page N is always the (N+1)th page in the ORIGINAL unmodified debug PDF (0-indexed).
-        # However, if Fascia finishes first, it inserts pages. If Reveal finishes later, it inserts pages.
-        # So we can't just assume Phase 1 for page idx N is at index N.
-        # We must track how many extra pages we've already inserted.
-        # Let's search for "Phase 1 - Page " text in the PDF to find the anchor pages.
-        # Wait, the PDF pages are rasterized images. `get_text()` returns nothing for them.
-        
-        # Since reading text is impossible, we can use the page dimensions!
-        # NO. We can just use an offset map. But app.py doesn't track it.
-        # Actually, let's keep it simple: we insert the new pages *right after* the (page_idx)th page 
-        # of the CURRENT document, assuming that the first N pages of the debug PDF 
-        # roughly correspond to the N pages. We will calculate an insertion index.
-        # Since `app.py` usually batches Fascia+Reveal if they finish before Main,
-        # they are both appended at the same time. If they finish after Main, they are appended sequentially.
+        if saved_files:
+            print("[DEBUG-PDF] Saved {0} annotated PDFs to {1}".format(len(saved_files), pdf_dir))
 
-        if existing_pdf_path and os.path.exists(existing_pdf_path):
-            with fitz.open(existing_pdf_path) as existing_doc:
-                merged.insert_pdf(existing_doc)
-            print(f"[DEBUG-PDF] Loaded {len(merged)} existing page(s) from {existing_pdf_path}")
-            
-            # Group new images by their target anchor page index
-            from collections import defaultdict
-            pages_by_idx = defaultdict(list)
-            
-            with fitz.open(tmp_ann_pdf) as ann_doc:
-                for idx, target_page_idx in enumerate(img_to_page_idx):
-                    pages_by_idx[target_page_idx].append(idx)
-                    
-                # We iterate backwards through the pages_by_idx so insertions don't shift earlier targets
-                for target_page_idx in sorted(pages_by_idx.keys(), reverse=True):
-                    # In a newly minted debug PDF, the anchor page for `target_page_idx` is exactly `target_page_idx`.
-                    # We want to insert the annotated pages immediately after it, i.e., at `insert_idx = target_page_idx + 1`.
-                    # But what if there are already some annotated pages there from a previous run?
-                    # E.g., Fascia was inserted, and now Reveal is doing it.
-                    # We can use a simple heuristic: just insert at `target_page_idx + 1`. 
-                    # If other pages were inserted there before, it pushes them down, but they stay grouped near the original page!
-                    insert_idx = min(target_page_idx + 1, len(merged))
-                    
-                    for ann_doc_page_num in pages_by_idx[target_page_idx]:
-                        merged.insert_pdf(ann_doc, from_page=ann_doc_page_num, to_page=ann_doc_page_num, start_at=insert_idx)
-                        insert_idx += 1 # Advance so next appended page goes after the one we just inserted
-
-        else:
-            # No existing PDF, just save the annotated ones
-            with fitz.open(tmp_ann_pdf) as ann_doc:
-                merged.insert_pdf(ann_doc)
-
-        merged.save(pdf_path)
-        merged.close()
-
-        # Clean up temp file
-        try:
-            os.remove(tmp_ann_pdf)
-        except Exception:
-            pass
-
-        total = fitz.open(pdf_path)
-        n_pages = len(total)
-        total.close()
-        print(f"[DEBUG-PDF] Updated debug PDF: {pdf_path} ({n_pages} pages total)")
-        return pdf_path
+        return pdf_dir
 
     except Exception as exc:
-        print(f"[DEBUG-PDF] append_annotated_to_debug_pdf failed: {exc}")
+        print("[DEBUG-PDF] append_annotated_to_debug_pdf failed: {0}".format(exc))
         import traceback; traceback.print_exc()
         return existing_pdf_path
-
