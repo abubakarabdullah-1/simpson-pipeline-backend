@@ -22,6 +22,87 @@ class CaptureOutput(object):
         return ''.join(self.data)
 
 
+# Patterns to filter OUT from string log entries (internal/noise/errors)
+_NOISE_PATTERNS = re.compile("|".join([
+    r"\[Roboflow\]",
+    r"\[SAM3\]",
+    r"\[VLM\]",
+    r"\[VLM Zoom\]",
+    r"\[VLM Keynote Refine\]",
+    r"\[FALLBACK\]",
+    r"Connection error",
+    r"Connection refused",
+    r"Max retries exceeded",
+    r"Failed to connect",
+    r"Failed to establish",
+    r"Ollama",
+    r"VLM Failed",
+    r"uploaded to S3",
+    r"Upload",
+    r"Saved full page to",
+    r"Saved.*\.pdf",
+    r"Total drawings on page",
+    r"Found '.*' \(instance",
+    r"Drawing near text",
+    r"--- \[Phase",
+    r"--- \[Fascia",
+    r"--- \[Reveal",
+    r"\[Phase 1b?\]",
+    r"Phase 1",
+    r"pre-computed result",
+    r"Rect\(",
+    r"PDF coords",
+    r"PDF.*pt.*JPEG.*px",
+    r"Full page:.*\u2192",
+    r"scale=",
+    r"keynote='",
+    r"zoom_",
+    r"fascia_zoom",
+    r"reveal_zoom",
+    r"reveal_extracted",
+    r"\[get_keynote_dimension\]",
+    r"keyword found, processing",
+    r"Refined keynote crop",
+    r"inst \d+ '",
+    r"api_key=",
+    r"localhost:\d+",
+    r"http://localhost",
+    r"HTTPConnectionPool",
+    r"NewConnectionError",
+    r"No masks found",
+    r"falling back",
+    r"How many leader lines",
+    r"\*\*Arrow",
+    r"arrow tip",
+    r"Pinpointing arrow",
+    r"Identifying where",
+    r"Identifying Fascia",
+    r"Step \d+[a-z]?:",
+    r"Step \d+ done",
+    r"Bubble Locate",
+    r"Tip Trace",
+    r"Processing page \d+ instance",
+    r"using pre-computed",
+    r"--- \[Phase \d\] Complete",
+    r"^Processing Page \d+",
+    r"^Processing P\d+",
+    r"^Calibrating Page \d+",
+    r"leader lines",
+    r"arrow endpoint",
+    r"There are \*\*\d+\*\*",
+    r"originating",
+    r"^> Processing",
+    r"^> Calibrating",
+    r"Info: Based on",
+    r"Crop saved",
+    r"keynote '.*' \u2192",
+    r"\[P1b",
+    r"Rate limit",
+    r"retry in \d+s",
+    r"Keynote Flow",
+]), re.IGNORECASE)
+
+
 class LogCollector(object):
     """Captures print statements from phase executions and stores them as structured logs."""
     
@@ -72,6 +153,57 @@ class LogCollector(object):
             "message": message
         })
 
+    @staticmethod
+    def _is_noise_string(msg):
+        """Check if a string log entry is internal noise."""
+        return bool(_NOISE_PATTERNS.search(msg))
+
+    @staticmethod
+    def _is_noise_object(obj):
+        """Check if a dict log entry is noise/error."""
+        # Keep Fascia/Reveal result objects (they have keyword + view)
+        if "keyword" in obj and "view" in obj:
+            return False
+        # Keep schedule/summary objects
+        if "action" in obj or "summary" in obj:
+            return False
+        # Remove FAILED status entries
+        if obj.get("status") == "FAILED":
+            return True
+        # Remove VLM Failed entries
+        if obj.get("reason") == "VLM Failed":
+            return True
+        # Remove phase1-style category classification entries
+        if "category" in obj and "reason" in obj and "log" in obj:
+            return True
+        # Check non-content string values for noise
+        for k, v in obj.items():
+            if k in ("description", "keyword", "view", "material", "dimension"):
+                continue
+            if isinstance(v, str) and _NOISE_PATTERNS.search(v):
+                return True
+        return False
+
+    def _clean_log_list(self, entries):
+        """Filter a list of log entries, keeping only clean user-facing items."""
+        cleaned = []
+        for entry in entries:
+            if isinstance(entry, str):
+                if not self._is_noise_string(entry):
+                    clean = entry.strip()
+                    if clean.startswith("> "):
+                        clean = clean[2:]
+                    if clean.startswith("--- "):
+                        continue
+                    if clean:
+                        cleaned.append(clean)
+            elif isinstance(entry, dict):
+                if not self._is_noise_object(entry):
+                    # Remove internal "log" field
+                    clean_obj = {k: v for k, v in entry.items() if k != "log"}
+                    cleaned.append(clean_obj)
+        return cleaned
+
     def reorganize_by_page(self):
         """Parses all logs and regroups them by page number."""
         pages = {}
@@ -87,8 +219,8 @@ class LogCollector(object):
             r"Calibrating Page\s*(\d+)"
         ]
         
-        # Process logs in phase order usually: 1 -> 2 -> 3 -> 4 -> 5
-        phase_order = ["phase1", "phase2", "phase3", "phase4", "phase5"]
+        # Process logs in phase order — skip phase1 (internal classification only)
+        phase_order = ["phase2", "phase3", "phase4", "phase5"]
         
         for phase in phase_order:
             if phase not in self.logs: continue
@@ -117,20 +249,8 @@ class LogCollector(object):
                 
                 # Structured Parsing per Phase
                 
-                # Phase 1: [Category] (Reason)
-                if phase == "phase1":
-                    p1_match = re.search(r"\[(.*?)\]\s*\((.*?)\)", msg)
-                    if p1_match:
-                        pages[current_page][phase].append({
-                            "category": p1_match.group(1),
-                            "reason": p1_match.group(2),
-                            "log": msg
-                        })
-                    else:
-                        pages[current_page][phase].append(msg)
-                
                 # Phase 2: Reading (Mode)... or Cataloged X, Y
-                elif phase == "phase2":
+                if phase == "phase2":
                     p2_match = re.search(r"Reading (.*?)\s*\((.*?)\)", msg)
                     if p2_match:
                         pages[current_page][phase].append({
@@ -207,15 +327,26 @@ class LogCollector(object):
                 else:
                     pages[current_page][phase].append(msg)
         
-        # Ensure consistent structure: every page has all phases
-        for page_num in pages:
-            for phase in phase_order + ["general"]:
+        # Ensure consistent structure and clean all entries
+        for page_num in list(pages.keys()):
+            # Remove 'general' bucket from each page
+            pages[page_num].pop("general", None)
+            # Remove phase1 if somehow present
+            pages[page_num].pop("phase1", None)
+            # Ensure all expected phases exist
+            for phase in phase_order:
                 if phase not in pages[page_num]:
                     pages[page_num][phase] = []
+            # Ensure Fascia/Reveal keys exist (populated later by app.py)
+            for kw in ("Fascia", "Reveal"):
+                if kw not in pages[page_num]:
+                    pages[page_num][kw] = []
+            # Clean all log lists to remove noise/errors
+            for key in list(pages[page_num].keys()):
+                pages[page_num][key] = self._clean_log_list(pages[page_num][key])
         
-        # Remove 'general' page as requested by user
-        if "general" in pages:
-            del pages["general"]
+        # Remove 'general' page bucket
+        pages.pop("general", None)
                 
         return pages
     
@@ -234,15 +365,6 @@ class LogCollector(object):
             "run_id": run_id,
             "generated_at": datetime.utcnow().isoformat(),
             "pages": page_logs,
-            "summary": {
-                "phase1_count": len(self.logs["phase1"]),
-                "phase2_count": len(self.logs["phase2"]),
-                "phase3_count": len(self.logs["phase3"]),
-                "phase4_count": len(self.logs["phase4"]),
-                "phase5_count": len(self.logs["phase5"]),
-                "general_count": len(self.logs["general"]),
-                "total_logs": sum(len(v) for v in self.logs.values())
-            }
         }
         
         with open(log_path, 'w') as f:
