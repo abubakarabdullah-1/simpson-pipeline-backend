@@ -28,8 +28,8 @@ def log_response(ctx, text):
 # ── Gemini client ─────────────────────────────────────────────────────────────
 PROJECT_ID  = "neurainternalnoorg"
 LOCATION    = "global"
-MODEL_NAME  = "gemini-3-pro-preview"
-_ZOOM_MODEL = "gemini-3-flash-preview"
+MODEL_NAME  = "gemini-2.5-flash"
+_ZOOM_MODEL = "gemini-2.5-flash"
 
 client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
 
@@ -499,7 +499,7 @@ def get_keynote_dimension(pdf_path: str, keynote_symbol: str, search_text: str) 
 # PHASE 1b — Component Highlighting
 # ══════════════════════════════════════════════════════════════════════════════
 
-_REVEAL_MODEL = "gemini-3-pro-preview"
+_REVEAL_MODEL = "gemini-2.5-flash"
 _ZOOM_PAD     = 120
 
 

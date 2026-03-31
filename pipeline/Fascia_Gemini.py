@@ -27,9 +27,9 @@ def log_response(ctx, text):
 # ── Gemini client ─────────────────────────────────────────────────────────────
 PROJECT_ID  = "neurainternalnoorg"
 LOCATION    = "global"
-MODEL_NAME  = "gemini-3-pro-preview"
-_ZOOM_MODEL = "gemini-3-flash-preview"
-_FASCIA_MODEL = "gemini-3-pro-preview"
+MODEL_NAME  = "gemini-2.5-flash"
+_ZOOM_MODEL = "gemini-2.5-flash"
+_FASCIA_MODEL = "gemini-2.5-flash"
 
 client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
 
